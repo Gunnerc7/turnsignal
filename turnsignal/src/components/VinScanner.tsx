@@ -29,7 +29,11 @@ export default function VinScanner({
     scanner
       .start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 280, height: 120 } },
+        {
+          fps: 5,
+          qrbox: { width: 300, height: 120 },
+          useBarCodeDetectorIfSupported: true,
+        },
         (decodedText) => {
           onScan(decodedText);
         },

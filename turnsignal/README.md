@@ -43,19 +43,26 @@ That starts it at http://localhost:5173
 - [x] Supabase connection wired to your real project
 - [x] Main kanban board, reading/writing real data from your `vehicles` table
 - [x] Sidebar boards (Loaners, Body Shop, Waiting on Title, Auction/Wholesale)
-- [x] VIN decode (NHTSA API) — needs your real VIN to test
-- [x] VIN camera scan — needs testing on your phone, camera behavior can't be tested from here
+- [x] VIN decode (NHTSA API)
 - [x] Stock number / mileage required fields
 - [x] Per-column add button
 - [x] Dealership name in header
-- [ ] Drag-and-drop between columns (cards are added directly to a column for now; moving a card to a different stage isn't built yet)
-- [ ] Owner/admin mode (needs a small database change first — ask me when you're ready)
-- [ ] Loaner return date alerts, title aging alerts
+- [x] Move vehicles between stages (dropdown picker, not drag-and-drop — see note below)
+- [x] Loaner overdue badge (red, based on loaner_return_date)
+- [x] Title aging alert (Waiting on Title uses a 10-day threshold instead of the standard 5-day one)
+- [x] Owner mode — requires running `supabase/owner_mode_migration.sql` first (see below)
+- [ ] VIN camera scan — paused for now; many VIN stickers don't even have a barcode, and live barcode scanning in-browser turned out to be unreliable. Manual entry + Decode button is the current path.
 
-## A note on board/stage values
+## Owner mode setup (one-time)
 
-Vehicles are stored with a `board` and `stage` value. Main board stages use:
-`inbound_trade_in`, `service`, `detail_backlog`, `active_detail`, `ready_for_photos`, `price_for_lot`.
-Sidebar boards use: `loaners`, `body_shop`, `waiting_on_title`, `auction_wholesale`.
-These are internal values only — the app displays the friendly labels you
-already know (e.g. "Inbound / Trade-In").
+1. Open `supabase/owner_mode_migration.sql` in this folder
+2. Replace `YOUR_EMAIL_HERE` with your actual login email
+3. Run the whole file in Supabase's SQL editor (Lovable → Cloud icon → Database → SQL editor)
+4. Sign out and back in on the live app — you'll now see a dealership picker instead of going straight to a board
+
+## On drag-and-drop
+
+Vehicles move between stages using a "Move to…" dropdown on each card instead of
+dragging. This was a deliberate choice: native drag-and-drop gestures are
+unreliable on mobile browsers, and this tool is meant to be used on a phone
+in a parking lot. A dropdown always works the same way regardless of device.
