@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 const SCANNER_ELEMENT_ID = 'vin-scanner-region';
 
@@ -13,7 +13,17 @@ export default function VinScanner({
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
   useEffect(() => {
-    const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID);
+    // VIN stickers on the dash/door jamb are almost always Code 39 (sometimes
+    // Code 128). Without listing these explicitly, the library mostly looks
+    // for QR codes and never recognizes a VIN barcode.
+    const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID, {
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.QR_CODE,
+      ],
+      verbose: false,
+    });
     scannerRef.current = scanner;
 
     scanner
