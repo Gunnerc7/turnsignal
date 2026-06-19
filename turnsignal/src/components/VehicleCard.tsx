@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { Vehicle } from '../lib/types';
 import { moveVehicleToStage } from '../lib/moveVehicle';
+import { supabase } from '../lib/supabase';
 import { StageConfig } from '../lib/boards';
 
 function daysSince(dateStr: string): number {
@@ -45,6 +46,9 @@ export default function VehicleCard({
   onMoved: () => void;
 }) {
   const [moving, setMoving] = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState(vehicle.notes ?? '');
+  const [savingNotes, setSavingNotes] = useState(false);
   const days = daysSince(vehicle.stage_entered_at);
   const thresholds = getThresholds(vehicle.board);
   const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
@@ -58,6 +62,14 @@ export default function VehicleCard({
     setMoving(true);
     await moveVehicleToStage(vehicle.id, newStage);
     setMoving(false);
+    onMoved();
+  }
+
+  async function handleSaveNotes() {
+    setSavingNotes(true);
+    await supabase.from('vehicles').update({ notes: notesDraft.trim() || null }).eq('id', vehicle.id);
+    setSavingNotes(false);
+    setEditingNotes(false);
     onMoved();
   }
 
@@ -109,6 +121,51 @@ export default function VehicleCard({
           </p>
         )}
       </div>
+
+      {editingNotes ? (
+        <div className="mt-2">
+          <textarea
+            autoFocus
+            value={notesDraft}
+            onChange={(e) => setNotesDraft(e.target.value)}
+            placeholder="Add a note…"
+            rows={2}
+            className="w-full text-xs border border-gray-300 rounded-md py-1.5 px-2 bg-white text-ink resize-none"
+          />
+          <div className="flex gap-2 mt-1">
+            <button
+              onClick={handleSaveNotes}
+              disabled={savingNotes}
+              className="text-xs bg-signal-blue text-white rounded-md px-3 py-1 font-medium disabled:opacity-60"
+            >
+              {savingNotes ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={() => {
+                setNotesDraft(vehicle.notes ?? '');
+                setEditingNotes(false);
+              }}
+              className="text-xs text-steel px-3 py-1"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : vehicle.notes ? (
+        <button
+          onClick={() => setEditingNotes(true)}
+          className="mt-2 w-full text-left text-xs text-steel italic bg-gray-50 rounded-md px-2 py-1.5 line-clamp-2"
+        >
+          {vehicle.notes}
+        </button>
+      ) : (
+        <button
+          onClick={() => setEditingNotes(true)}
+          className="mt-2 text-xs text-signal-blue font-medium"
+        >
+          + Add note
+        </button>
+      )}
 
       {otherStages.length > 0 && (
         <select
