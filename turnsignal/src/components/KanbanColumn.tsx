@@ -1,3 +1,4 @@
+import { useDroppable } from '@dnd-kit/core';
 import { StageConfig } from '../lib/boards';
 import { Vehicle } from '../lib/types';
 import VehicleCard from './VehicleCard';
@@ -18,9 +19,15 @@ export default function KanbanColumn({
   onMoved: () => void;
 }) {
   const otherStages = allStagesInBoard.filter((s) => s.key !== stageKey);
+  const { setNodeRef, isOver } = useDroppable({ id: stageKey });
 
   return (
-    <div className="bg-gray-100 rounded-xl p-3 w-72 flex-shrink-0 flex flex-col max-h-full">
+    <div
+      ref={setNodeRef}
+      className={`bg-gray-100 rounded-xl p-3 w-72 flex-shrink-0 flex flex-col max-h-full transition-colors ${
+        isOver ? 'ring-2 ring-signal-blue bg-blue-50' : ''
+      }`}
+    >
       <div className="flex items-center justify-between mb-3">
         <p className="font-semibold text-ink text-sm">
           {label} <span className="text-steel font-normal">({vehicles.length})</span>

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { supabase } from '../lib/supabase';
+import { moveVehicleToStage } from '../lib/moveVehicle';
 import { ALL_BOARDS, getBoard } from '../lib/boards';
 import { Vehicle } from '../lib/types';
 import KanbanColumn from './KanbanColumn';
 import AddVehicleModal from './AddVehicleModal';
+import VehicleCard from './VehicleCard';
 
 export default function DealerBoard({ dealershipId }: { dealershipId: string }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -11,6 +14,11 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addModal, setAddModal] = useState<{ board: string; stage: string } | null>(null);
+  const [draggingVehicle, setDraggingVehicle] = useState<Vehicle | null>(null);
+
+  // A small activation distance means a normal tap (e.g. opening the dropdown)
+  // doesn't accidentally start a drag — only a deliberate press-and-move does.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const loadVehicles = useCallback(async () => {
     setLoading(true);
@@ -33,6 +41,24 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
   useEffect(() => {
     loadVehicles();
   }, [loadVehicles]);
+
+  function handleDragStart(event: DragStartEvent) {
+    const vehicle = vehicles.find((v) => v.id === event.active.id);
+    setDraggingVehicle(vehicle ?? null);
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    setDraggingVehicle(null);
+    const vehicleId = event.active.id as string;
+    const newStage = event.over?.id as string | undefined;
+    if (!newStage) return;
+
+    const vehicle = vehicles.find((v) => v.id === vehicleId);
+    if (!vehicle || vehicle.stage === newStage) return;
+
+    await moveVehicleToStage(vehicleId, newStage);
+    loadVehicles();
+  }
 
   const activeBoard = getBoard(activeBoardKey);
 
@@ -58,23 +84,33 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
 
       {error && <p className="text-signal-red text-sm px-4 py-2">{error}</p>}
 
-      <main className="flex-1 overflow-x-auto p-4">
-        <div className="flex gap-4 h-full">
-          {activeBoard.stages.map((stage) => (
-            <KanbanColumn
-              key={stage.key}
-              label={stage.label}
-              stageKey={stage.key}
-              allStagesInBoard={activeBoard.stages}
-              vehicles={vehicles.filter(
-                (v) => v.board === activeBoard.key && v.stage === stage.key
-              )}
-              onAddClick={() => setAddModal({ board: activeBoard.key, stage: stage.key })}
-              onMoved={loadVehicles}
-            />
-          ))}
-        </div>
-      </main>
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <main className="flex-1 overflow-x-auto p-4">
+          <div className="flex gap-4 h-full">
+            {activeBoard.stages.map((stage) => (
+              <KanbanColumn
+                key={stage.key}
+                label={stage.label}
+                stageKey={stage.key}
+                allStagesInBoard={activeBoard.stages}
+                vehicles={vehicles.filter(
+                  (v) => v.board === activeBoard.key && v.stage === stage.key
+                )}
+                onAddClick={() => setAddModal({ board: activeBoard.key, stage: stage.key })}
+                onMoved={loadVehicles}
+              />
+            ))}
+          </div>
+        </main>
+
+        <DragOverlay>
+          {draggingVehicle && (
+            <div className="w-72">
+              <VehicleCard vehicle={draggingVehicle} otherStages={[]} onMoved={() => {}} />
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
 
       {addModal && (
         <AddVehicleModal

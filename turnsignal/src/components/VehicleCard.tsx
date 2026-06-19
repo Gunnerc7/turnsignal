@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useDraggable } from '@dnd-kit/core';
 import { Vehicle } from '../lib/types';
-import { supabase } from '../lib/supabase';
+import { moveVehicleToStage } from '../lib/moveVehicle';
 import { StageConfig } from '../lib/boards';
 
 function daysSince(dateStr: string): number {
@@ -48,20 +49,45 @@ export default function VehicleCard({
   const thresholds = getThresholds(vehicle.board);
   const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
 
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: vehicle.id,
+  });
+
   async function handleMove(newStage: string) {
     if (!newStage || newStage === vehicle.stage) return;
     setMoving(true);
-    await supabase
-      .from('vehicles')
-      .update({ stage: newStage, stage_entered_at: new Date().toISOString() })
-      .eq('id', vehicle.id);
+    await moveVehicleToStage(vehicle.id, newStage);
     setMoving(false);
     onMoved();
   }
 
   return (
-    <div className={`rounded-lg border-2 p-3 mb-3 ${ageStyles(days, thresholds)}`}>
-      <div className="flex items-start justify-between gap-2">
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+        opacity: isDragging ? 0.4 : 1,
+      }}
+      className={`relative rounded-lg border-2 p-3 mb-3 ${ageStyles(days, thresholds)}`}
+    >
+      <div
+        {...listeners}
+        {...attributes}
+        style={{ touchAction: 'none' }}
+        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center cursor-grab active:cursor-grabbing text-gray-400"
+        aria-label="Drag to move"
+      >
+        <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">
+          <circle cx="2" cy="2" r="1.5" />
+          <circle cx="2" cy="8" r="1.5" />
+          <circle cx="2" cy="14" r="1.5" />
+          <circle cx="9" cy="2" r="1.5" />
+          <circle cx="9" cy="8" r="1.5" />
+          <circle cx="9" cy="14" r="1.5" />
+        </svg>
+      </div>
+
+      <div className="flex items-start justify-between gap-2 pr-6">
         <p className="font-semibold text-ink text-sm leading-tight">
           {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
           {vehicle.trim ? ` ${vehicle.trim}` : ''}

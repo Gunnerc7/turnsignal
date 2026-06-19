@@ -13,6 +13,9 @@ export default function VinScanner({
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
   useEffect(() => {
+    // VIN stickers on the dash/door jamb are almost always Code 39 (sometimes
+    // Code 128). Without listing these explicitly, the library mostly looks
+    // for QR codes and never recognizes a VIN barcode.
     const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID, {
       formatsToSupport: [
         Html5QrcodeSupportedFormats.CODE_39,
@@ -39,6 +42,7 @@ export default function VinScanner({
       )
       .catch(() => {
         // Camera failed to start (permissions denied, no camera, etc.)
+        // The parent component should let the user fall back to typing the VIN.
       });
 
     return () => {
