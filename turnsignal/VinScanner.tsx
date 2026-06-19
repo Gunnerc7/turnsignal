@@ -32,7 +32,6 @@ export default function VinScanner({
         {
           fps: 5,
           qrbox: { width: 300, height: 120 },
-          useBarCodeDetectorIfSupported: true,
         },
         (decodedText) => {
           onScan(decodedText);
