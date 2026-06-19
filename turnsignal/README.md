@@ -47,7 +47,7 @@ That starts it at http://localhost:5173
 - [x] Stock number / mileage required fields
 - [x] Per-column add button
 - [x] Dealership name in header
-- [x] Move vehicles between stages (dropdown picker, not drag-and-drop — see note below)
+- [x] Move vehicles between stages — drag-and-drop (via a small handle on each card, works with mouse and touch) plus the dropdown as a guaranteed-to-work fallback
 - [x] Loaner overdue badge (red, based on loaner_return_date)
 - [x] Title aging alert (Waiting on Title uses a 10-day threshold instead of the standard 5-day one)
 - [x] Owner mode — requires running `supabase/owner_mode_migration.sql` first (see below)
