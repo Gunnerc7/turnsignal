@@ -50,7 +50,8 @@ That starts it at http://localhost:5173
 - [x] Move vehicles between stages — drag-and-drop (via a small handle on each card, works with mouse and touch) plus the dropdown as a guaranteed-to-work fallback
 - [x] Loaner overdue badge (red, based on loaner_return_date)
 - [x] Title aging alert (Waiting on Title uses a 10-day threshold instead of the standard 5-day one)
-- [x] Notes on each card — click to add/edit, saved to the existing `notes` column
+- [x] Notes — multiple timestamped notes per vehicle, latest shown on the card, click to see full history (requires `supabase/notes_and_completed_migration.sql`)
+- [x] Completed checkbox on each card, Planner-style (same migration above)
 - [x] Owner mode — requires running `supabase/owner_mode_migration.sql` first (see below)
 - [x] Add new dealerships directly from Owner Mode (no SQL needed for this part)
 

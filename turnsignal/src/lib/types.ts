@@ -17,6 +17,14 @@ export type Vehicle = {
   updated_at: string;
   stock_number: string | null;
   mileage: number | null;
+  completed: boolean;
+};
+
+export type VehicleNote = {
+  id: string;
+  vehicle_id: string;
+  content: string;
+  created_at: string;
 };
 
 export type NewVehicleInput = {
