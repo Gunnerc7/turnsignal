@@ -7,8 +7,12 @@ import { StageConfig } from '../lib/boards';
 import NotesModal from './NotesModal';
 
 function daysSince(dateStr: string): number {
-  const diffMs = Date.now() - new Date(dateStr).getTime();
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const entered = new Date(dateStr);
+  const enteredMidnight = new Date(entered.getFullYear(), entered.getMonth(), entered.getDate());
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const diffMs = todayMidnight.getTime() - enteredMidnight.getTime();
+  return Math.round(diffMs / (1000 * 60 * 60 * 24));
 }
 
 function isOverdueLoaner(returnDate: string | null): boolean {
@@ -35,13 +39,13 @@ function getThresholds(board: string) {
 function ageStripe(days: number, thresholds: { yellow: number; red: number }) {
   if (days >= thresholds.red) return 'before:bg-signal-red';
   if (days >= thresholds.yellow) return 'before:bg-signal-amber';
-  return 'before:bg-gray-200';
+  return 'before:bg-signal-green';
 }
 
 function ageBadgeStyles(days: number, thresholds: { yellow: number; red: number }) {
   if (days >= thresholds.red) return 'bg-signal-red text-white shadow-glowRed';
   if (days >= thresholds.yellow) return 'bg-signal-amber text-white shadow-glowAmber';
-  return 'bg-gray-100 text-steel';
+  return 'bg-signal-green text-white';
 }
 
 export default function VehicleCard({

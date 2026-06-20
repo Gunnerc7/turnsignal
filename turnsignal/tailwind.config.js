@@ -13,6 +13,7 @@ export default {
         asphalt: '#EDEFF2',
         signal: {
           blue: '#2D5BFF',
+          green: '#1FA463',
           amber: '#F5A623',
           red: '#E5483D',
         },
