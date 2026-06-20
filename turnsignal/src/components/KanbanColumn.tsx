@@ -1,4 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { StageConfig } from '../lib/boards';
 import { Vehicle } from '../lib/types';
 import VehicleCard from './VehicleCard';
@@ -45,9 +46,11 @@ export default function KanbanColumn({
         {vehicles.length === 0 ? (
           <p className="text-steel text-sm py-6 text-center">No vehicles here</p>
         ) : (
-          vehicles.map((v) => (
-            <VehicleCard key={v.id} vehicle={v} otherStages={otherStages} onMoved={onMoved} />
-          ))
+          <SortableContext items={vehicles.map((v) => v.id)} strategy={verticalListSortingStrategy}>
+            {vehicles.map((v) => (
+              <VehicleCard key={v.id} vehicle={v} otherStages={otherStages} onMoved={onMoved} />
+            ))}
+          </SortableContext>
         )}
       </div>
     </div>

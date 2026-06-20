@@ -37,3 +37,15 @@ export async function moveVehicleToStage(vehicleId: string, newStage: string) {
 
   return supabase.from('vehicles').update(updates).eq('id', vehicleId);
 }
+
+// Reordering within a single column is a separate concern from changing
+// stages — this just sets sequential position values so the column
+// remembers the order you dragged things into.
+export async function reorderWithinStage(orderedVehicleIds: string[]) {
+  await Promise.all(
+    orderedVehicleIds.map((id, index) =>
+      supabase.from('vehicles').update({ position: index }).eq('id', id)
+    )
+  );
+}
+

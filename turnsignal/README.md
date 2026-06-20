@@ -50,6 +50,7 @@ That starts it at http://localhost:5173
 - [x] Delete a vehicle — from the edit modal (pencil icon), with confirmation
 - [x] Completed cards collapse to a slim row, Planner-style — tap the name to peek at full details again
 - [x] Loaners board now has two columns: Loaners and Service Loaners
+- [x] Reorder cards within a column by dragging — uses the `position` column that already existed in the schema
 - [x] Per-column add button
 - [x] Dealership name in header
 - [x] Move vehicles between stages — drag-and-drop (via a small handle on each card, works with mouse and touch) plus the dropdown as a guaranteed-to-work fallback

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+import { useSortable } from '@dnd-kit/sortable';
 import { Vehicle, VehicleNote } from '../lib/types';
 import { moveVehicleToStage } from '../lib/moveVehicle';
 import { supabase } from '../lib/supabase';
@@ -82,7 +82,7 @@ export default function VehicleCard({
   const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
   const vehicleLabel = `${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: vehicle.id,
   });
 
@@ -124,6 +124,7 @@ export default function VehicleCard({
         ref={setNodeRef}
         style={{
           transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+          transition,
           opacity: isDragging ? 0.3 : 0.6,
         }}
         className="relative bg-white rounded-xl shadow-sm border border-gray-200 mb-2 pl-5 flex items-center gap-2 px-3 py-2
@@ -152,6 +153,7 @@ export default function VehicleCard({
       ref={setNodeRef}
       style={{
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+        transition,
         opacity: isDragging ? 0.3 : vehicle.completed ? 0.6 : 1,
       }}
       className={`relative bg-white rounded-xl shadow-sm border border-gray-200 p-3.5 mb-3 pl-5 transition-opacity duration-150

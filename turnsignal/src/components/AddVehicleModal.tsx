@@ -98,6 +98,7 @@ export default function AddVehicleModal({
         stage,
         stage_entered_at: now,
         recon_started_at: startsRecon ? now : null,
+        position: 999999,
         ...sharedFields,
       })
       .select()
