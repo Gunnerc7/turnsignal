@@ -51,8 +51,8 @@ export default function AddVehicleModal({
   }
 
   async function handleSubmit() {
-    if (!stockNumber.trim() || !mileage.trim()) {
-      setError('Stock number and mileage are required.');
+    if (!mileage.trim()) {
+      setError('Mileage is required.');
       return;
     }
 
@@ -75,7 +75,7 @@ export default function AddVehicleModal({
         make: make.trim() || null,
         model: model.trim() || null,
         trim: trim.trim() || null,
-        stock_number: stockNumber.trim(),
+        stock_number: stockNumber.trim() || null,
         mileage: parseInt(mileage, 10),
       })
       .select()
@@ -177,7 +177,7 @@ export default function AddVehicleModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Stock number *</label>
+            <label className="block text-sm font-medium text-ink mb-1">Stock number (optional)</label>
             <input
               value={stockNumber}
               onChange={(e) => setStockNumber(e.target.value)}
