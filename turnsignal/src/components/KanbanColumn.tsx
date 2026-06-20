@@ -24,18 +24,18 @@ export default function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`bg-gray-100 rounded-xl p-3 w-72 flex-shrink-0 flex flex-col max-h-full transition-colors ${
-        isOver ? 'ring-2 ring-signal-blue bg-blue-50' : ''
+      className={`snap-col w-[86vw] sm:w-72 flex-shrink-0 flex flex-col max-h-full rounded-xl p-3 transition-colors duration-150 ${
+        isOver ? 'bg-blue-50 ring-2 ring-signal-blue ring-inset' : 'bg-asphalt'
       }`}
     >
-      <div className="flex items-center justify-between mb-3">
-        <p className="font-semibold text-ink text-sm">
+      <div className="flex items-center justify-between mb-3 px-0.5">
+        <p className="font-display font-semibold text-ink text-sm">
           {label} <span className="text-steel font-normal">({vehicles.length})</span>
         </p>
         <button
           onClick={onAddClick}
           aria-label={`Add vehicle to ${label}`}
-          className="w-7 h-7 rounded-full bg-signal-blue text-white text-lg leading-none flex items-center justify-center"
+          className="w-9 h-9 rounded-full bg-signal-blue text-white text-xl leading-none flex items-center justify-center active:scale-90 transition shadow-sm"
         >
           +
         </button>
@@ -43,7 +43,7 @@ export default function KanbanColumn({
 
       <div className="overflow-y-auto flex-1">
         {vehicles.length === 0 ? (
-          <p className="text-steel text-sm py-4 text-center">No vehicles here</p>
+          <p className="text-steel text-sm py-6 text-center">No vehicles here</p>
         ) : (
           vehicles.map((v) => (
             <VehicleCard key={v.id} vehicle={v} otherStages={otherStages} onMoved={onMoved} />

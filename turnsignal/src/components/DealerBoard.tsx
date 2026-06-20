@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import {
+  DndContext,
+  defaultDropAnimationSideEffects,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import { supabase } from '../lib/supabase';
 import { moveVehicleToStage } from '../lib/moveVehicle';
 import { ALL_BOARDS, getBoard } from '../lib/boards';
@@ -7,6 +16,12 @@ import { Vehicle } from '../lib/types';
 import KanbanColumn from './KanbanColumn';
 import AddVehicleModal from './AddVehicleModal';
 import VehicleCard from './VehicleCard';
+
+const dropAnimation = {
+  duration: 220,
+  easing: 'cubic-bezier(0.2, 0.7, 0.4, 1)',
+  sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.4' } } }),
+};
 
 export default function DealerBoard({ dealershipId }: { dealershipId: string }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -68,13 +83,13 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <nav className="flex gap-1 overflow-x-auto px-4 py-2 bg-white border-b border-gray-200">
+      <nav className="flex gap-1.5 overflow-x-auto px-4 py-2.5 bg-white border-b border-gray-200">
         {ALL_BOARDS.map((b) => (
           <button
             key={b.key}
             onClick={() => setActiveBoardKey(b.key)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap ${
-              activeBoardKey === b.key ? 'bg-signal-blue text-white' : 'text-steel bg-gray-100'
+            className={`font-display px-3.5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+              activeBoardKey === b.key ? 'bg-signal-blue text-white' : 'text-steel bg-asphalt'
             }`}
           >
             {b.label}
@@ -86,7 +101,7 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <main className="flex-1 overflow-x-auto p-4">
-          <div className="flex gap-4 h-full">
+          <div className="snap-row flex gap-4 h-full">
             {activeBoard.stages.map((stage) => (
               <KanbanColumn
                 key={stage.key}
@@ -103,9 +118,9 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
           </div>
         </main>
 
-        <DragOverlay>
+        <DragOverlay dropAnimation={dropAnimation}>
           {draggingVehicle && (
-            <div className="w-72">
+            <div className="w-[86vw] sm:w-72 rotate-1 scale-105 shadow-lift rounded-xl">
               <VehicleCard vehicle={draggingVehicle} otherStages={[]} onMoved={() => {}} />
             </div>
           )}

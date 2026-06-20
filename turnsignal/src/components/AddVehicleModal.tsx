@@ -86,7 +86,7 @@ export default function AddVehicleModal({
     <div className="fixed inset-0 bg-black/50 z-40 flex items-end sm:items-center justify-center">
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-ink">Add vehicle</h2>
+          <h2 className="font-display text-lg font-semibold text-ink">Add vehicle</h2>
           <button onClick={onClose} className="text-steel text-sm">
             Close
           </button>

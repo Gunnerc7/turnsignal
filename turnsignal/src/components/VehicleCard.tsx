@@ -24,15 +24,15 @@ function getThresholds(board: string) {
   return { yellow: 3, red: 5 };
 }
 
-function ageStyles(days: number, thresholds: { yellow: number; red: number }) {
-  if (days >= thresholds.red) return 'border-signal-red bg-red-50';
-  if (days >= thresholds.yellow) return 'border-signal-amber bg-amber-50';
-  return 'border-gray-200 bg-white';
+function ageStripe(days: number, thresholds: { yellow: number; red: number }) {
+  if (days >= thresholds.red) return 'before:bg-signal-red';
+  if (days >= thresholds.yellow) return 'before:bg-signal-amber';
+  return 'before:bg-gray-200';
 }
 
 function ageBadgeStyles(days: number, thresholds: { yellow: number; red: number }) {
-  if (days >= thresholds.red) return 'bg-signal-red text-white';
-  if (days >= thresholds.yellow) return 'bg-signal-amber text-white';
+  if (days >= thresholds.red) return 'bg-signal-red text-white shadow-glowRed';
+  if (days >= thresholds.yellow) return 'bg-signal-amber text-white shadow-glowAmber';
   return 'bg-gray-100 text-steel';
 }
 
@@ -78,18 +78,19 @@ export default function VehicleCard({
       ref={setNodeRef}
       style={{
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-        opacity: isDragging ? 0.4 : 1,
+        opacity: isDragging ? 0.3 : 1,
       }}
-      className={`relative rounded-lg border-2 p-3 mb-3 ${ageStyles(days, thresholds)}`}
+      className={`relative bg-white rounded-xl shadow-sm border border-gray-200 p-3.5 mb-3 pl-5 transition-opacity duration-150
+        before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-xl ${ageStripe(days, thresholds)}`}
     >
       <div
         {...listeners}
         {...attributes}
         style={{ touchAction: 'none' }}
-        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center cursor-grab active:cursor-grabbing text-gray-400"
+        className="absolute top-1 right-1 w-9 h-9 flex items-center justify-center cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-400 active:scale-90 transition"
         aria-label="Drag to move"
       >
-        <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">
+        <svg width="14" height="18" viewBox="0 0 12 16" fill="currentColor">
           <circle cx="2" cy="2" r="1.5" />
           <circle cx="2" cy="8" r="1.5" />
           <circle cx="2" cy="14" r="1.5" />
@@ -99,20 +100,22 @@ export default function VehicleCard({
         </svg>
       </div>
 
-      <div className="flex items-start justify-between gap-2 pr-6">
-        <p className="font-semibold text-ink text-sm leading-tight">
+      <div className="flex items-start justify-between gap-2 pr-7">
+        <p className="font-display font-semibold text-ink text-sm leading-tight">
           {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
           {vehicle.trim ? ` ${vehicle.trim}` : ''}
         </p>
-        <span className={`text-xs font-medium rounded-full px-2 py-0.5 whitespace-nowrap ${ageBadgeStyles(days, thresholds)}`}>
+        <span
+          className={`tabular font-display text-xs font-bold rounded-full px-2.5 py-1 whitespace-nowrap ${ageBadgeStyles(days, thresholds)}`}
+        >
           {days}d
         </span>
       </div>
 
       <div className="mt-2 text-xs text-steel space-y-0.5">
-        {vehicle.stock_number && <p>Stock #{vehicle.stock_number}</p>}
-        {vehicle.vin && <p className="truncate">VIN: {vehicle.vin}</p>}
-        {vehicle.mileage != null && <p>{vehicle.mileage.toLocaleString()} mi</p>}
+        {vehicle.stock_number && <p className="tabular">Stock #{vehicle.stock_number}</p>}
+        {vehicle.vin && <p className="truncate tabular">VIN: {vehicle.vin}</p>}
+        {vehicle.mileage != null && <p className="tabular">{vehicle.mileage.toLocaleString()} mi</p>}
         {vehicle.loaned_to && <p>Loaned to: {vehicle.loaned_to}</p>}
         {vehicle.loaner_return_date && (
           <p className={overdueLoaner ? 'text-signal-red font-semibold' : ''}>
@@ -130,13 +133,13 @@ export default function VehicleCard({
             onChange={(e) => setNotesDraft(e.target.value)}
             placeholder="Add a note…"
             rows={2}
-            className="w-full text-xs border border-gray-300 rounded-md py-1.5 px-2 bg-white text-ink resize-none"
+            className="w-full text-xs border border-gray-300 rounded-md py-1.5 px-2 bg-white text-ink resize-none focus:outline-none focus:ring-2 focus:ring-signal-blue"
           />
           <div className="flex gap-2 mt-1">
             <button
               onClick={handleSaveNotes}
               disabled={savingNotes}
-              className="text-xs bg-signal-blue text-white rounded-md px-3 py-1 font-medium disabled:opacity-60"
+              className="text-xs bg-signal-blue text-white rounded-md px-3 py-1.5 font-medium disabled:opacity-60"
             >
               {savingNotes ? 'Saving…' : 'Save'}
             </button>
@@ -145,7 +148,7 @@ export default function VehicleCard({
                 setNotesDraft(vehicle.notes ?? '');
                 setEditingNotes(false);
               }}
-              className="text-xs text-steel px-3 py-1"
+              className="text-xs text-steel px-3 py-1.5"
             >
               Cancel
             </button>
@@ -161,7 +164,7 @@ export default function VehicleCard({
       ) : (
         <button
           onClick={() => setEditingNotes(true)}
-          className="mt-2 text-xs text-signal-blue font-medium"
+          className="mt-2 text-xs text-signal-blue font-medium py-1"
         >
           + Add note
         </button>
@@ -172,7 +175,7 @@ export default function VehicleCard({
           value=""
           disabled={moving}
           onChange={(e) => handleMove(e.target.value)}
-          className="mt-2 w-full text-xs border border-gray-300 rounded-md py-1.5 px-2 bg-white text-steel"
+          className="mt-2 w-full text-xs border border-gray-300 rounded-md py-2 px-2 bg-white text-steel font-medium focus:outline-none focus:ring-2 focus:ring-signal-blue"
         >
           <option value="" disabled>
             {moving ? 'Moving…' : 'Move to…'}
