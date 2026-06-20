@@ -9,4 +9,27 @@ html, body, #root {
 body {
   background-color: #F4F5F7;
   -webkit-tap-highlight-color: transparent;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Tabular digits for the day-count badge — keeps numbers from jittering
+   in width as a vehicle ages from "2d" to "12d". */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.snap-row {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.snap-col {
+  scroll-snap-align: start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }
