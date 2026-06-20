@@ -70,20 +70,23 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="bg-ink text-white px-4 py-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-steel uppercase tracking-wide">
-            {isOwner ? 'Owner' : 'Dealership'}
-          </p>
-          <h1 className="text-lg font-semibold">{headerLabel}</h1>
+      <header className="bg-ink text-white px-4 py-3.5 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="w-2 h-2 rounded-full bg-signal-amber shadow-glowAmber" aria-hidden="true" />
+          <div>
+            <p className="text-[11px] text-steel uppercase tracking-wider leading-none">
+              {isOwner ? 'Owner' : 'Dealership'}
+            </p>
+            <h1 className="font-display text-lg font-semibold leading-tight">{headerLabel}</h1>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           {isOwner && viewingAsOwner && (
-            <button onClick={() => setViewingAsOwner(null)} className="text-sm text-steel hover:text-white">
+            <button onClick={() => setViewingAsOwner(null)} className="text-sm text-steel hover:text-white py-2">
               ← Dealer list
             </button>
           )}
-          <button onClick={() => supabase.auth.signOut()} className="text-sm text-steel hover:text-white">
+          <button onClick={() => supabase.auth.signOut()} className="text-sm text-steel hover:text-white py-2">
             Sign out
           </button>
         </div>
