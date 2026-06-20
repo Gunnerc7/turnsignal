@@ -19,7 +19,14 @@ export const MAIN_BOARD: BoardConfig = {
 };
 
 export const SIDEBAR_BOARDS: BoardConfig[] = [
-  { key: 'loaners', label: 'Loaners', stages: [{ key: 'loaners', label: 'Loaners' }] },
+  {
+    key: 'loaners',
+    label: 'Loaners',
+    stages: [
+      { key: 'loaners', label: 'Loaners' },
+      { key: 'service_loaners', label: 'Service Loaners' },
+    ],
+  },
   { key: 'body_shop', label: 'Body Shop', stages: [{ key: 'body_shop', label: 'Body Shop' }] },
   {
     key: 'waiting_on_title',

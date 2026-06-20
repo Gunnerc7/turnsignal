@@ -47,6 +47,9 @@ That starts it at http://localhost:5173
 - [x] Stock number and mileage are both optional now — not every vehicle has them right away (requires `supabase/mileage_optional_and_color.sql`)
 - [x] Optional color field, manual entry (VINs don't encode color)
 - [x] Full editing — pencil icon on each card opens the same form pre-filled, saves changes instead of creating a duplicate
+- [x] Delete a vehicle — from the edit modal (pencil icon), with confirmation
+- [x] Completed cards collapse to a slim row, Planner-style — tap the name to peek at full details again
+- [x] Loaners board now has two columns: Loaners and Service Loaners
 - [x] Per-column add button
 - [x] Dealership name in header
 - [x] Move vehicles between stages — drag-and-drop (via a small handle on each card, works with mouse and touch) plus the dropdown as a guaranteed-to-work fallback

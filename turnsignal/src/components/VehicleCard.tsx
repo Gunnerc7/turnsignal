@@ -72,6 +72,7 @@ export default function VehicleCard({
   const [notesOpen, setNotesOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   // Once recon_started_at is set (the moment a vehicle first leaves Inbound),
   // the badge shows total time across every stage since then — it never
   // resets on a stage move. Still in Inbound with no anchor yet? Fall back
@@ -114,6 +115,37 @@ export default function VehicleCard({
   }
 
   const latestNote = notes[0];
+
+  // Completed vehicles collapse down to a single slim row, Planner-style —
+  // tap the name to peek at full details again without un-completing it.
+  if (vehicle.completed && !expanded) {
+    return (
+      <div
+        ref={setNodeRef}
+        style={{
+          transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+          opacity: isDragging ? 0.3 : 0.6,
+        }}
+        className="relative bg-white rounded-xl shadow-sm border border-gray-200 mb-2 pl-5 flex items-center gap-2 px-3 py-2
+          before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-xl before:bg-signal-green"
+      >
+        <button
+          onClick={handleToggleComplete}
+          disabled={toggling}
+          aria-label="Mark incomplete"
+          className="w-5 h-5 rounded-full bg-signal-blue border-2 border-signal-blue flex-shrink-0 flex items-center justify-center"
+        >
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+            <path d="M3 8.5L6.5 12L13 4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <button onClick={() => setExpanded(true)} className="flex-1 text-left text-sm text-steel line-through truncate">
+          {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
+          {vehicle.trim ? ` ${vehicle.trim}` : ''}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -33,6 +33,7 @@ export default function AddVehicleModal({
   const [scannerOpen, setScannerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function runDecode(vinToDecode: string) {
     setError(null);
@@ -115,6 +116,24 @@ export default function AddVehicleModal({
 
     if (insertError) {
       setError(insertError.message);
+      return;
+    }
+    onCreated();
+  }
+
+  async function handleDelete() {
+    if (!vehicle) return;
+    const confirmed = window.confirm(
+      `Delete this vehicle? This removes it and all its notes and history permanently — it can't be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    const { error: deleteError } = await supabase.from('vehicles').delete().eq('id', vehicle.id);
+    setDeleting(false);
+
+    if (deleteError) {
+      setError(deleteError.message);
       return;
     }
     onCreated();
@@ -237,6 +256,16 @@ export default function AddVehicleModal({
           >
             {saving ? 'Saving…' : isEditing ? 'Save changes' : 'Add vehicle'}
           </button>
+
+          {isEditing && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="w-full text-signal-red font-medium py-2 disabled:opacity-60"
+            >
+              {deleting ? 'Deleting…' : 'Delete vehicle'}
+            </button>
+          )}
         </div>
       </div>
 
