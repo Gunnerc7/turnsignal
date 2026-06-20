@@ -59,19 +59,36 @@ export default function AddVehicleModal({
     setSaving(true);
     setError(null);
 
-    const { error: insertError } = await supabase.from('vehicles').insert({
-      dealership_id: dealershipId,
-      board,
-      stage,
-      stage_entered_at: new Date().toISOString(),
-      vin: vin.trim() || null,
-      year: year ? parseInt(year, 10) : null,
-      make: make.trim() || null,
-      model: model.trim() || null,
-      trim: trim.trim() || null,
-      stock_number: stockNumber.trim(),
-      mileage: parseInt(mileage, 10),
-    });
+    const now = new Date().toISOString();
+    const startsRecon = stage !== 'inbound_trade_in';
+
+    const { data: created, error: insertError } = await supabase
+      .from('vehicles')
+      .insert({
+        dealership_id: dealershipId,
+        board,
+        stage,
+        stage_entered_at: now,
+        recon_started_at: startsRecon ? now : null,
+        vin: vin.trim() || null,
+        year: year ? parseInt(year, 10) : null,
+        make: make.trim() || null,
+        model: model.trim() || null,
+        trim: trim.trim() || null,
+        stock_number: stockNumber.trim(),
+        mileage: parseInt(mileage, 10),
+      })
+      .select()
+      .single();
+
+    if (!insertError && created) {
+      await supabase.from('stage_history').insert({
+        vehicle_id: created.id,
+        board,
+        stage,
+        entered_at: now,
+      });
+    }
 
     setSaving(false);
 

@@ -18,6 +18,7 @@ export type Vehicle = {
   stock_number: string | null;
   mileage: number | null;
   completed: boolean;
+  recon_started_at: string | null;
 };
 
 export type VehicleNote = {
@@ -25,6 +26,15 @@ export type VehicleNote = {
   vehicle_id: string;
   content: string;
   created_at: string;
+};
+
+export type StageHistoryRow = {
+  id: string;
+  vehicle_id: string;
+  board: string;
+  stage: string;
+  entered_at: string;
+  exited_at: string | null;
 };
 
 export type NewVehicleInput = {

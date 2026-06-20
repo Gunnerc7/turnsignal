@@ -50,6 +50,8 @@ That starts it at http://localhost:5173
 - [x] Move vehicles between stages — drag-and-drop (via a small handle on each card, works with mouse and touch) plus the dropdown as a guaranteed-to-work fallback
 - [x] Loaner overdue badge (red, based on loaner_return_date)
 - [x] Title aging alert (Waiting on Title uses a 10-day threshold instead of the standard 5-day one)
+- [x] Total recon time tracking — the badge shows continuous total time since leaving Inbound/Trade-In, never resets on a stage move (requires `supabase/stage_history_migration.sql`)
+- [x] Per-vehicle stage timeline — tap the clock icon on a card to see exactly how long it spent in each stage
 - [x] Notes — multiple timestamped notes per vehicle, latest shown on the card, click to see full history (requires `supabase/notes_and_completed_migration.sql`)
 - [x] Completed checkbox on each card, Planner-style (same migration above)
 - [x] Owner mode — requires running `supabase/owner_mode_migration.sql` first (see below)

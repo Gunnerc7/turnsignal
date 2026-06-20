@@ -5,6 +5,7 @@ import { moveVehicleToStage } from '../lib/moveVehicle';
 import { supabase } from '../lib/supabase';
 import { StageConfig } from '../lib/boards';
 import NotesModal from './NotesModal';
+import StageTimelineModal from './StageTimelineModal';
 
 function daysSince(dateStr: string): number {
   const entered = new Date(dateStr);
@@ -31,18 +32,25 @@ function formatNoteDate(dateStr: string): string {
 
 // Waiting on Title typically takes longer than a normal recon stage,
 // so it gets a more lenient threshold than the rest of the board.
-function getThresholds(board: string) {
+// Inbound/Trade-In is time waiting on pickup or transit — largely out of the
+// dealership's control, so it shouldn't carry the same urgency colors as
+// stages the team actually controls. Returning null means "track the days,
+// but don't color-code it."
+function getThresholds(board: string, stage: string): { yellow: number; red: number } | null {
+  if (stage === 'inbound_trade_in') return null;
   if (board === 'waiting_on_title') return { yellow: 5, red: 10 };
   return { yellow: 3, red: 5 };
 }
 
-function ageStripe(days: number, thresholds: { yellow: number; red: number }) {
+function ageStripe(days: number, thresholds: { yellow: number; red: number } | null) {
+  if (!thresholds) return 'before:bg-gray-300';
   if (days >= thresholds.red) return 'before:bg-signal-red';
   if (days >= thresholds.yellow) return 'before:bg-signal-amber';
   return 'before:bg-signal-green';
 }
 
-function ageBadgeStyles(days: number, thresholds: { yellow: number; red: number }) {
+function ageBadgeStyles(days: number, thresholds: { yellow: number; red: number } | null) {
+  if (!thresholds) return 'bg-gray-200 text-steel';
   if (days >= thresholds.red) return 'bg-signal-red text-white shadow-glowRed';
   if (days >= thresholds.yellow) return 'bg-signal-amber text-white shadow-glowAmber';
   return 'bg-signal-green text-white';
@@ -61,8 +69,13 @@ export default function VehicleCard({
   const [toggling, setToggling] = useState(false);
   const [notes, setNotes] = useState<VehicleNote[]>([]);
   const [notesOpen, setNotesOpen] = useState(false);
-  const days = daysSince(vehicle.stage_entered_at);
-  const thresholds = getThresholds(vehicle.board);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  // Once recon_started_at is set (the moment a vehicle first leaves Inbound),
+  // the badge shows total time across every stage since then — it never
+  // resets on a stage move. Still in Inbound with no anchor yet? Fall back
+  // to the neutral per-stage count from getThresholds returning null.
+  const days = daysSince(vehicle.recon_started_at ?? vehicle.stage_entered_at);
+  const thresholds = getThresholds(vehicle.board, vehicle.stage);
   const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
   const vehicleLabel = `${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
 
@@ -173,22 +186,40 @@ export default function VehicleCard({
         )}
       </div>
 
-      <button
-        onClick={() => setNotesOpen(true)}
-        className="mt-2 w-full text-left text-xs bg-gray-50 rounded-md px-2 py-1.5"
-      >
-        {latestNote ? (
-          <>
-            <p className="text-steel italic line-clamp-1">{latestNote.content}</p>
-            <p className="text-[10px] text-gray-400 mt-0.5 tabular">
-              {formatNoteDate(latestNote.created_at)}
-              {notes.length > 1 && ` · +${notes.length - 1} more`}
-            </p>
-          </>
-        ) : (
-          <p className="text-signal-blue font-medium">+ Add note</p>
-        )}
-      </button>
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={() => setNotesOpen(true)}
+          className="flex-1 text-left text-xs bg-gray-50 rounded-md px-2 py-1.5"
+        >
+          {latestNote ? (
+            <>
+              <p className="text-steel italic line-clamp-1">{latestNote.content}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5 tabular">
+                {formatNoteDate(latestNote.created_at)}
+                {notes.length > 1 && ` · +${notes.length - 1} more`}
+              </p>
+            </>
+          ) : (
+            <p className="text-signal-blue font-medium">+ Add note</p>
+          )}
+        </button>
+
+        <button
+          onClick={() => setTimelineOpen(true)}
+          aria-label="View stage timeline"
+          className="bg-gray-50 rounded-md px-2.5 text-steel"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M8 4v4l2.5 2.5M14 8A6 6 0 112 8a6 6 0 0112 0z"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
 
       {otherStages.length > 0 && (
         <select
@@ -214,6 +245,15 @@ export default function VehicleCard({
           vehicleLabel={vehicleLabel}
           onClose={() => setNotesOpen(false)}
           onChanged={loadNotes}
+        />
+      )}
+
+      {timelineOpen && (
+        <StageTimelineModal
+          vehicleId={vehicle.id}
+          vehicleLabel={vehicleLabel}
+          board={vehicle.board}
+          onClose={() => setTimelineOpen(false)}
         />
       )}
     </div>
