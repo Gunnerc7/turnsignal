@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { StageConfig } from '../lib/boards';
 import NotesModal from './NotesModal';
 import StageTimelineModal from './StageTimelineModal';
+import AddVehicleModal from './AddVehicleModal';
 
 function daysSince(dateStr: string): number {
   const entered = new Date(dateStr);
@@ -70,6 +71,7 @@ export default function VehicleCard({
   const [notes, setNotes] = useState<VehicleNote[]>([]);
   const [notesOpen, setNotesOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   // Once recon_started_at is set (the moment a vehicle first leaves Inbound),
   // the badge shows total time across every stage since then — it never
   // resets on a stage move. Still in Inbound with no anchor yet? Fall back
@@ -174,6 +176,7 @@ export default function VehicleCard({
       </div>
 
       <div className="mt-2 text-xs text-steel space-y-0.5 pl-7">
+        {vehicle.color && <p>{vehicle.color}</p>}
         {vehicle.stock_number && <p className="tabular">Stock #{vehicle.stock_number}</p>}
         {vehicle.vin && <p className="truncate tabular">VIN: {vehicle.vin}</p>}
         {vehicle.mileage != null && <p className="tabular">{vehicle.mileage.toLocaleString()} mi</p>}
@@ -219,6 +222,22 @@ export default function VehicleCard({
             />
           </svg>
         </button>
+
+        <button
+          onClick={() => setEditOpen(true)}
+          aria-label="Edit vehicle details"
+          className="bg-gray-50 rounded-md px-2.5 text-steel"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M11.5 2.5l2 2L5 13l-3 1 1-3 8.5-8.5z"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
       </div>
 
       {otherStages.length > 0 && (
@@ -254,6 +273,20 @@ export default function VehicleCard({
           vehicleLabel={vehicleLabel}
           board={vehicle.board}
           onClose={() => setTimelineOpen(false)}
+        />
+      )}
+
+      {editOpen && (
+        <AddVehicleModal
+          dealershipId={vehicle.dealership_id}
+          board={vehicle.board}
+          stage={vehicle.stage}
+          vehicle={vehicle}
+          onClose={() => setEditOpen(false)}
+          onCreated={() => {
+            setEditOpen(false);
+            onMoved();
+          }}
         />
       )}
     </div>

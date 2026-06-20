@@ -44,7 +44,9 @@ That starts it at http://localhost:5173
 - [x] Main kanban board, reading/writing real data from your `vehicles` table
 - [x] Sidebar boards (Loaners, Body Shop, Waiting on Title, Auction/Wholesale)
 - [x] VIN decode (NHTSA API)
-- [x] Stock number / mileage required fields
+- [x] Stock number and mileage are both optional now — not every vehicle has them right away (requires `supabase/mileage_optional_and_color.sql`)
+- [x] Optional color field, manual entry (VINs don't encode color)
+- [x] Full editing — pencil icon on each card opens the same form pre-filled, saves changes instead of creating a duplicate
 - [x] Per-column add button
 - [x] Dealership name in header
 - [x] Move vehicles between stages — drag-and-drop (via a small handle on each card, works with mouse and touch) plus the dropdown as a guaranteed-to-work fallback

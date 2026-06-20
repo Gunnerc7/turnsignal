@@ -1,28 +1,34 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { decodeVin } from '../lib/vinDecode';
+import { Vehicle } from '../lib/types';
 import VinScanner from './VinScanner';
 
 export default function AddVehicleModal({
   dealershipId,
   board,
   stage,
+  vehicle,
   onClose,
   onCreated,
 }: {
   dealershipId: string;
   board: string;
   stage: string;
+  vehicle?: Vehicle;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [vin, setVin] = useState('');
-  const [year, setYear] = useState('');
-  const [make, setMake] = useState('');
-  const [model, setModel] = useState('');
-  const [trim, setTrim] = useState('');
-  const [stockNumber, setStockNumber] = useState('');
-  const [mileage, setMileage] = useState('');
+  const isEditing = !!vehicle;
+
+  const [vin, setVin] = useState(vehicle?.vin ?? '');
+  const [year, setYear] = useState(vehicle?.year != null ? String(vehicle.year) : '');
+  const [make, setMake] = useState(vehicle?.make ?? '');
+  const [model, setModel] = useState(vehicle?.model ?? '');
+  const [trim, setTrim] = useState(vehicle?.trim ?? '');
+  const [color, setColor] = useState(vehicle?.color ?? '');
+  const [stockNumber, setStockNumber] = useState(vehicle?.stock_number ?? '');
+  const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : '');
   const [decoding, setDecoding] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,13 +57,34 @@ export default function AddVehicleModal({
   }
 
   async function handleSubmit() {
-    if (!mileage.trim()) {
-      setError('Mileage is required.');
-      return;
-    }
-
     setSaving(true);
     setError(null);
+
+    const sharedFields = {
+      vin: vin.trim() || null,
+      year: year ? parseInt(year, 10) : null,
+      make: make.trim() || null,
+      model: model.trim() || null,
+      trim: trim.trim() || null,
+      color: color.trim() || null,
+      stock_number: stockNumber.trim() || null,
+      mileage: mileage.trim() ? parseInt(mileage, 10) : null,
+    };
+
+    if (isEditing && vehicle) {
+      const { error: updateError } = await supabase
+        .from('vehicles')
+        .update(sharedFields)
+        .eq('id', vehicle.id);
+
+      setSaving(false);
+      if (updateError) {
+        setError(updateError.message);
+        return;
+      }
+      onCreated();
+      return;
+    }
 
     const now = new Date().toISOString();
     const startsRecon = stage !== 'inbound_trade_in';
@@ -70,13 +97,7 @@ export default function AddVehicleModal({
         stage,
         stage_entered_at: now,
         recon_started_at: startsRecon ? now : null,
-        vin: vin.trim() || null,
-        year: year ? parseInt(year, 10) : null,
-        make: make.trim() || null,
-        model: model.trim() || null,
-        trim: trim.trim() || null,
-        stock_number: stockNumber.trim() || null,
-        mileage: parseInt(mileage, 10),
+        ...sharedFields,
       })
       .select()
       .single();
@@ -103,7 +124,9 @@ export default function AddVehicleModal({
     <div className="fixed inset-0 bg-black/50 z-40 flex items-end sm:items-center justify-center">
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display text-lg font-semibold text-ink">Add vehicle</h2>
+          <h2 className="font-display text-lg font-semibold text-ink">
+            {isEditing ? 'Edit vehicle' : 'Add vehicle'}
+          </h2>
           <button onClick={onClose} className="text-steel text-sm">
             Close
           </button>
@@ -177,6 +200,16 @@ export default function AddVehicleModal({
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-ink mb-1">Color (optional)</label>
+            <input
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              placeholder="e.g. Summit White"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
+            />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-ink mb-1">Stock number (optional)</label>
             <input
               value={stockNumber}
@@ -186,7 +219,7 @@ export default function AddVehicleModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Mileage *</label>
+            <label className="block text-sm font-medium text-ink mb-1">Mileage (optional)</label>
             <input
               type="number"
               value={mileage}
@@ -202,7 +235,7 @@ export default function AddVehicleModal({
             disabled={saving}
             className="w-full bg-signal-blue text-white font-semibold rounded-lg py-2.5 disabled:opacity-60"
           >
-            {saving ? 'Adding…' : 'Add vehicle'}
+            {saving ? 'Saving…' : isEditing ? 'Save changes' : 'Add vehicle'}
           </button>
         </div>
       </div>

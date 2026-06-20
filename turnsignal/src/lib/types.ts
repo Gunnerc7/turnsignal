@@ -19,6 +19,7 @@ export type Vehicle = {
   mileage: number | null;
   completed: boolean;
   recon_started_at: string | null;
+  color: string | null;
 };
 
 export type VehicleNote = {
