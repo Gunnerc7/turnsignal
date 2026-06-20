@@ -50,7 +50,29 @@ That starts it at http://localhost:5173
 - [x] Move vehicles between stages — drag-and-drop (via a small handle on each card, works with mouse and touch) plus the dropdown as a guaranteed-to-work fallback
 - [x] Loaner overdue badge (red, based on loaner_return_date)
 - [x] Title aging alert (Waiting on Title uses a 10-day threshold instead of the standard 5-day one)
+- [x] Notes on each card — click to add/edit, saved to the existing `notes` column
 - [x] Owner mode — requires running `supabase/owner_mode_migration.sql` first (see below)
+- [x] Add new dealerships directly from Owner Mode (no SQL needed for this part)
+
+## Adding a user to any dealership (manual, for now)
+
+Creating someone's actual login still has to be done manually — see "Owner mode setup" below for why. Once a dealership exists (built into the app now), add a person to it like this:
+
+1. Lovable → Cloud icon → Users → create the new user (email + password, enable auto-confirm if available)
+2. Copy that new user's UUID
+3. Run this in the SQL editor, swapping in the real values:
+
+```sql
+INSERT INTO profiles (id, dealership_id, email, role)
+VALUES (
+  'PASTE_NEW_USER_UUID_HERE',
+  (SELECT id FROM dealerships WHERE name = 'Johnson Motors Menomonie'),
+  'their_email_here',
+  'dealer'
+);
+```
+
+That looks up the dealership by name, so this same snippet works for any dealership you've created — just change the name and the person's info.
 - [ ] VIN camera scan — paused for now; many VIN stickers don't even have a barcode, and live barcode scanning in-browser turned out to be unreliable. Manual entry + Decode button is the current path.
 
 ## Owner mode setup (one-time)
