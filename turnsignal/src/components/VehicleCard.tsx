@@ -3,7 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { Vehicle, VehicleNote } from '../lib/types';
 import { moveVehicleToStage } from '../lib/moveVehicle';
 import { supabase } from '../lib/supabase';
-import { StageConfig } from '../lib/boards';
+import { ALL_BOARDS } from '../lib/boards';
 import NotesModal from './NotesModal';
 import StageTimelineModal from './StageTimelineModal';
 import AddVehicleModal from './AddVehicleModal';
@@ -59,11 +59,9 @@ function ageBadgeStyles(days: number, thresholds: { yellow: number; red: number 
 
 export default function VehicleCard({
   vehicle,
-  otherStages,
   onMoved,
 }: {
   vehicle: Vehicle;
-  otherStages: StageConfig[];
   onMoved: () => void;
 }) {
   const [moving, setMoving] = useState(false);
@@ -99,10 +97,12 @@ export default function VehicleCard({
     loadNotes();
   }, [vehicle.id]);
 
-  async function handleMove(newStage: string) {
-    if (!newStage || newStage === vehicle.stage) return;
+  async function handleMove(value: string) {
+    const [newBoard, newStage] = value.split('::');
+    if (!newBoard || !newStage) return;
+    if (newBoard === vehicle.board && newStage === vehicle.stage) return;
     setMoving(true);
-    await moveVehicleToStage(vehicle.id, newStage);
+    await moveVehicleToStage(vehicle.id, newBoard, newStage);
     setMoving(false);
     onMoved();
   }
@@ -274,23 +274,34 @@ export default function VehicleCard({
         </button>
       </div>
 
-      {otherStages.length > 0 && (
-        <select
-          value=""
-          disabled={moving}
-          onChange={(e) => handleMove(e.target.value)}
-          className="mt-2 w-full text-xs border border-gray-300 rounded-md py-2 px-2 bg-white text-steel font-medium focus:outline-none focus:ring-2 focus:ring-signal-blue"
-        >
-          <option value="" disabled>
-            {moving ? 'Moving…' : 'Move to…'}
-          </option>
-          {otherStages.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
+      {(() => {
+        const otherDestinations = ALL_BOARDS.map((b) => ({
+          board: b,
+          stages: b.stages.filter((s) => !(b.key === vehicle.board && s.key === vehicle.stage)),
+        })).filter((g) => g.stages.length > 0);
+
+        return (
+          <select
+            value=""
+            disabled={moving}
+            onChange={(e) => handleMove(e.target.value)}
+            className="mt-2 w-full text-xs border border-gray-300 rounded-md py-2 px-2 bg-white text-steel font-medium focus:outline-none focus:ring-2 focus:ring-signal-blue"
+          >
+            <option value="" disabled>
+              {moving ? 'Moving…' : 'Move to…'}
             </option>
-          ))}
-        </select>
-      )}
+            {otherDestinations.map((group) => (
+              <optgroup key={group.board.key} label={group.board.label}>
+                {group.stages.map((s) => (
+                  <option key={`${group.board.key}::${s.key}`} value={`${group.board.key}::${s.key}`}>
+                    {s.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        );
+      })()}
 
       {notesOpen && (
         <NotesModal

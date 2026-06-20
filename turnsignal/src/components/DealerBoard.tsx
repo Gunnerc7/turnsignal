@@ -93,7 +93,7 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
     ];
 
     if (activeVehicle.stage !== destinationStage) {
-      await moveVehicleToStage(activeId, destinationStage);
+      await moveVehicleToStage(activeId, activeVehicle.board, destinationStage);
     }
     await reorderWithinStage(newOrderIds);
     loadVehicles();
@@ -131,7 +131,6 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
                 key={stage.key}
                 label={stage.label}
                 stageKey={stage.key}
-                allStagesInBoard={activeBoard.stages}
                 vehicles={vehicles.filter(
                   (v) => v.board === activeBoard.key && v.stage === stage.key
                 )}
@@ -145,7 +144,7 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
         <DragOverlay dropAnimation={dropAnimation}>
           {draggingVehicle && (
             <div className="w-[86vw] sm:w-72 rotate-1 scale-105 shadow-lift rounded-xl">
-              <VehicleCard vehicle={draggingVehicle} otherStages={[]} onMoved={() => {}} />
+              <VehicleCard vehicle={draggingVehicle} onMoved={() => {}} />
             </div>
           )}
         </DragOverlay>
