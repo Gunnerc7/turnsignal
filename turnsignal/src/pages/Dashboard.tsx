@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import DealerBoard from '../components/DealerBoard';
 import DealershipPicker from '../components/DealershipPicker';
+import InviteTeammateModal from '../components/InviteTeammateModal';
+import ChangePasswordModal from '../components/ChangePasswordModal';
 
 type Profile = { dealership_id: string | null; role: string };
 type ViewingDealership = { id: string; name: string };
@@ -14,6 +16,8 @@ export default function Dashboard() {
   const [viewingAsOwner, setViewingAsOwner] = useState<ViewingDealership | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!session) return;
@@ -68,6 +72,10 @@ export default function Dashboard() {
       : 'Owner Mode'
     : dealershipName;
 
+  // The dealership currently being viewed, regardless of whether you're a
+  // regular dealer or an Owner peeking into one — used for invites.
+  const currentDealershipId = isOwner ? viewingAsOwner?.id : profile.dealership_id;
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-ink text-white px-4 py-3.5 flex items-center justify-between">
@@ -80,7 +88,15 @@ export default function Dashboard() {
             <h1 className="font-display text-lg font-semibold leading-tight">{headerLabel}</h1>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {currentDealershipId && (
+            <button onClick={() => setInviteOpen(true)} className="text-sm text-steel hover:text-white py-2">
+              Invite
+            </button>
+          )}
+          <button onClick={() => setPasswordOpen(true)} className="text-sm text-steel hover:text-white py-2">
+            Password
+          </button>
           {isOwner && viewingAsOwner && (
             <button onClick={() => setViewingAsOwner(null)} className="text-sm text-steel hover:text-white py-2">
               ← Dealer list
@@ -105,6 +121,12 @@ export default function Dashboard() {
           This account isn't linked to a dealership yet.
         </p>
       )}
+
+      {inviteOpen && currentDealershipId && (
+        <InviteTeammateModal dealershipId={currentDealershipId} onClose={() => setInviteOpen(false)} />
+      )}
+
+      {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}
     </div>
   );
 }

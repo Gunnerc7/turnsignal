@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-export default function Login() {
+export default function Login({ onShowSignup }: { onShowSignup: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +64,10 @@ export default function Login() {
             className="w-full bg-signal-blue text-white font-display font-semibold rounded-lg py-3 disabled:opacity-60 active:scale-[0.98] transition"
           >
             {submitting ? 'Signing in…' : 'Sign in'}
+          </button>
+
+          <button type="button" onClick={onShowSignup} className="w-full text-center text-sm text-steel py-1">
+            Don't have an account? Create one
           </button>
         </form>
       </div>

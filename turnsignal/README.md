@@ -52,6 +52,8 @@ That starts it at http://localhost:5173
 - [x] Loaners board now has two columns: Loaners and Service Loaners
 - [x] Reorder cards within a column by dragging — uses the `position` column that already existed in the schema
 - [x] Move a vehicle to any board, not just within the current one — the dropdown now groups every destination by board
+- [x] Self-service signup — invite a teammate by email, they create their own password and get auto-linked to your dealership (requires `supabase/invite_system_migration.sql`)
+- [x] Self-service password change — anyone logged in can change their own password, including accounts you created for them manually
 - [x] Per-column add button
 - [x] Dealership name in header
 - [x] Move vehicles between stages — drag-and-drop (via a small handle on each card, works with mouse and touch) plus the dropdown as a guaranteed-to-work fallback

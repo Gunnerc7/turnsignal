@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import Login from './pages/Login';
+import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 
 function Routes() {
   const { session, loading } = useAuth();
+  const [showSignup, setShowSignup] = useState(false);
 
   if (loading) {
     return (
@@ -13,7 +16,13 @@ function Routes() {
     );
   }
 
-  return session ? <Dashboard /> : <Login />;
+  if (session) return <Dashboard />;
+
+  return showSignup ? (
+    <Signup onBackToLogin={() => setShowSignup(false)} />
+  ) : (
+    <Login onShowSignup={() => setShowSignup(true)} />
+  );
 }
 
 export default function App() {
