@@ -181,6 +181,15 @@ export default function AddVehicleModal({
             </button>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Stock number (optional)</label>
+            <input
+              value={stockNumber}
+              onChange={(e) => setStockNumber(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Year</label>
@@ -225,15 +234,6 @@ export default function AddVehicleModal({
               value={color}
               onChange={(e) => setColor(e.target.value)}
               placeholder="e.g. Summit White"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Stock number (optional)</label>
-            <input
-              value={stockNumber}
-              onChange={(e) => setStockNumber(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
             />
           </div>
