@@ -13,6 +13,7 @@ export default function Dashboard() {
   const { session } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [dealershipName, setDealershipName] = useState<string>('Your dealership');
+  const [dealershipActive, setDealershipActive] = useState(true);
   const [viewingAsOwner, setViewingAsOwner] = useState<ViewingDealership | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,10 +41,11 @@ export default function Dashboard() {
     if (data.role !== 'owner' && data.dealership_id) {
       const { data: dealership } = await supabase
         .from('dealerships')
-        .select('name')
+        .select('name, active')
         .eq('id', data.dealership_id)
         .single();
       setDealershipName(dealership?.name ?? 'Your dealership');
+      setDealershipActive(dealership?.active ?? true);
     }
 
     setLoading(false);
@@ -114,6 +116,13 @@ export default function Dashboard() {
         ) : (
           <DealershipPicker onSelect={setViewingAsOwner} />
         )
+      ) : !dealershipActive ? (
+        <div className="p-6 max-w-sm mx-auto text-center mt-12">
+          <p className="font-display text-lg font-semibold text-ink mb-2">Access paused</p>
+          <p className="text-steel text-sm">
+            This dealership's access has been paused. Contact your TurnSignal administrator for details.
+          </p>
+        </div>
       ) : profile.dealership_id ? (
         <DealerBoard dealershipId={profile.dealership_id} />
       ) : (

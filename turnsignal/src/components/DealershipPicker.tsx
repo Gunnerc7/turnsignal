@@ -1,23 +1,25 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import DeleteDealershipModal from './DeleteDealershipModal';
 
-type Dealership = { id: string; name: string };
+type Dealership = { id: string; name: string; active: boolean };
 
 export default function DealershipPicker({
   onSelect,
 }: {
-  onSelect: (dealership: Dealership) => void;
+  onSelect: (dealership: { id: string; name: string }) => void;
 }) {
   const [dealerships, setDealerships] = useState<Dealership[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Dealership | null>(null);
 
   async function loadDealerships() {
     const { data } = await supabase
       .from('dealerships')
-      .select('id, name')
+      .select('id, name, active')
       .order('name', { ascending: true });
     setDealerships(data ?? []);
     setLoading(false);
@@ -49,6 +51,11 @@ export default function DealershipPicker({
     setNewName('');
     await loadDealerships();
     if (data) onSelect(data);
+  }
+
+  async function toggleActive(dealership: Dealership) {
+    await supabase.from('dealerships').update({ active: !dealership.active }).eq('id', dealership.id);
+    loadDealerships();
   }
 
   return (
@@ -83,15 +90,43 @@ export default function DealershipPicker({
       ) : (
         <div className="space-y-2">
           {dealerships.map((d) => (
-            <button
+            <div
               key={d.id}
-              onClick={() => onSelect(d)}
-              className="w-full text-left bg-white border border-gray-200 rounded-lg px-4 py-3 font-medium text-ink"
+              className={`bg-white border rounded-lg px-4 py-3 ${
+                d.active ? 'border-gray-200' : 'border-gray-300 bg-gray-50'
+              }`}
             >
-              {d.name}
-            </button>
+              <button onClick={() => onSelect(d)} className="w-full text-left flex items-center gap-2 mb-2">
+                <span className="font-medium text-ink">{d.name}</span>
+                {!d.active && (
+                  <span className="text-[10px] uppercase tracking-wide bg-gray-200 text-steel rounded-full px-2 py-0.5">
+                    Paused
+                  </span>
+                )}
+              </button>
+              <div className="flex gap-3 text-sm">
+                <button onClick={() => toggleActive(d)} className="text-steel font-medium">
+                  {d.active ? 'Pause' : 'Resume'}
+                </button>
+                <button onClick={() => setDeleteTarget(d)} className="text-signal-red font-medium">
+                  Delete
+                </button>
+              </div>
+            </div>
           ))}
         </div>
+      )}
+
+      {deleteTarget && (
+        <DeleteDealershipModal
+          dealershipId={deleteTarget.id}
+          dealershipName={deleteTarget.name}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            setDeleteTarget(null);
+            loadDealerships();
+          }}
+        />
       )}
     </div>
   );

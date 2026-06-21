@@ -54,6 +54,7 @@ That starts it at http://localhost:5173
 - [x] Move a vehicle to any board, not just within the current one — the dropdown now groups every destination by board
 - [x] Self-service signup — invite a teammate by email, they create their own password and get auto-linked to your dealership (requires `supabase/invite_system_migration.sql`)
 - [x] Self-service password change — anyone logged in can change their own password, including accounts you created for them manually
+- [x] Pause or permanently delete a dealership from Owner Mode (requires `supabase/deactivate_delete_dealership_migration.sql`) — pausing blocks their access without touching their data; delete requires typing the dealership's exact name to confirm
 - [x] Per-column add button
 - [x] Dealership name in header
 - [x] Move vehicles between stages — drag-and-drop (via a small handle on each card, works with mouse and touch) plus the dropdown as a guaranteed-to-work fallback
