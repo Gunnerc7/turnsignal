@@ -58,12 +58,33 @@ export default function DealershipPicker({
     loadDealerships();
   }
 
+  function renderRow(d: Dealership) {
+    return (
+      <div key={d.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+        <button onClick={() => onSelect(d)} className="w-full text-left font-medium text-ink mb-2">
+          {d.name}
+        </button>
+        <div className="flex gap-3 text-sm">
+          <button onClick={() => toggleActive(d)} className="text-steel font-medium">
+            {d.active ? 'Pause' : 'Resume'}
+          </button>
+          <button onClick={() => setDeleteTarget(d)} className="text-signal-red font-medium">
+            Delete
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const activeDealerships = dealerships.filter((d) => d.active);
+  const pausedDealerships = dealerships.filter((d) => !d.active);
+
   return (
-    <div className="p-6 max-w-md mx-auto">
+    <div className="p-6 max-w-3xl mx-auto">
       <h2 className="text-lg font-semibold text-ink mb-1">Owner Mode</h2>
       <p className="text-steel text-sm mb-4">Pick a dealership to view or troubleshoot.</p>
 
-      <div className="bg-white border border-gray-200 rounded-lg p-3 mb-4">
+      <div className="bg-white border border-gray-200 rounded-lg p-3 mb-6">
         <label className="block text-sm font-medium text-ink mb-1">Add a new dealership</label>
         <div className="flex gap-2">
           <input
@@ -88,32 +109,28 @@ export default function DealershipPicker({
       ) : dealerships.length === 0 ? (
         <p className="text-steel text-sm">No dealerships found.</p>
       ) : (
-        <div className="space-y-2">
-          {dealerships.map((d) => (
-            <div
-              key={d.id}
-              className={`bg-white border rounded-lg px-4 py-3 ${
-                d.active ? 'border-gray-200' : 'border-gray-300 bg-gray-50'
-              }`}
-            >
-              <button onClick={() => onSelect(d)} className="w-full text-left flex items-center gap-2 mb-2">
-                <span className="font-medium text-ink">{d.name}</span>
-                {!d.active && (
-                  <span className="text-[10px] uppercase tracking-wide bg-gray-200 text-steel rounded-full px-2 py-0.5">
-                    Paused
-                  </span>
-                )}
-              </button>
-              <div className="flex gap-3 text-sm">
-                <button onClick={() => toggleActive(d)} className="text-steel font-medium">
-                  {d.active ? 'Pause' : 'Resume'}
-                </button>
-                <button onClick={() => setDeleteTarget(d)} className="text-signal-red font-medium">
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
+        <div className="flex flex-col sm:flex-row gap-6">
+          <div className="flex-1">
+            <h3 className="font-display font-semibold text-ink text-sm mb-2">
+              Active ({activeDealerships.length})
+            </h3>
+            {activeDealerships.length === 0 ? (
+              <p className="text-steel text-sm">None.</p>
+            ) : (
+              <div className="space-y-2">{activeDealerships.map(renderRow)}</div>
+            )}
+          </div>
+
+          <div className="flex-1">
+            <h3 className="font-display font-semibold text-steel text-sm mb-2">
+              Paused ({pausedDealerships.length})
+            </h3>
+            {pausedDealerships.length === 0 ? (
+              <p className="text-steel text-sm">None.</p>
+            ) : (
+              <div className="space-y-2">{pausedDealerships.map(renderRow)}</div>
+            )}
+          </div>
         </div>
       )}
 
