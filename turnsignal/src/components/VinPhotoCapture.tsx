@@ -80,7 +80,7 @@ export default function VinPhotoCapture({
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      <div className="flex justify-between items-center px-4 py-3 text-white">
+      <div className="flex justify-between items-center px-4 py-3 text-white flex-shrink-0">
         <p className="font-medium">Photograph the VIN</p>
         <button onClick={onClose} className="text-sm text-steel">
           Cancel
@@ -104,15 +104,21 @@ export default function VinPhotoCapture({
         </div>
       )}
 
-      <div className="p-6 flex justify-center bg-black">
+      <div
+        className="p-6 flex justify-center bg-black flex-shrink-0"
+        style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+      >
         <button
           onClick={handleCapture}
           disabled={!!error}
           aria-label="Capture photo"
-          className="w-16 h-16 rounded-full bg-white border-4 border-gray-400 disabled:opacity-40 active:scale-90 transition"
+          className="w-16 h-16 rounded-full bg-white border-4 border-gray-400 disabled:opacity-40 active:scale-90 transition flex-shrink-0"
         />
       </div>
-      <p className="text-center text-steel text-sm pb-4 px-4 bg-black">
+      <p
+        className="text-center text-steel text-sm px-4 bg-black"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
         Fit just the VIN line inside the green box, fill the frame, hold steady
       </p>
     </div>
