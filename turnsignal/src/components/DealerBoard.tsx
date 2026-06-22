@@ -30,6 +30,7 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addModal, setAddModal] = useState<{ board: string; stage: string } | null>(null);
+  const [scanModalOpen, setScanModalOpen] = useState(false);
   const [draggingVehicle, setDraggingVehicle] = useState<Vehicle | null>(null);
   // The stage a vehicle was in before the drag started — used at drop time
   // to know whether a real stage change happened (and stage history needs
@@ -183,6 +184,34 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
           )}
         </DragOverlay>
       </DndContext>
+
+      <button
+        onClick={() => setScanModalOpen(true)}
+        className="fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full bg-ink text-white shadow-lift flex items-center justify-center active:scale-90 transition"
+        aria-label="Scan VIN to add a vehicle"
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M4 7V5a1 1 0 011-1h2M20 7V5a1 1 0 00-1-1h-2M4 17v2a1 1 0 001 1h2M20 17v2a1 1 0 01-1 1h-2M4 12h16"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+
+      {scanModalOpen && (
+        <AddVehicleModal
+          dealershipId={dealershipId}
+          autoScan
+          onClose={() => setScanModalOpen(false)}
+          onCreated={() => {
+            setScanModalOpen(false);
+            loadVehicles();
+          }}
+        />
+      )}
 
       {addModal && (
         <AddVehicleModal

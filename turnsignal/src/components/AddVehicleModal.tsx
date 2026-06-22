@@ -1,26 +1,33 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { decodeVin } from '../lib/vinDecode';
+import { createVehicle } from '../lib/createVehicle';
+import { extractVinFromImage } from '../lib/vinOcr';
+import { ALL_BOARDS } from '../lib/boards';
 import { Vehicle } from '../lib/types';
-import VinScanner from './VinScanner';
+import VinPhotoCapture from './VinPhotoCapture';
 
 export default function AddVehicleModal({
   dealershipId,
   board,
   stage,
   vehicle,
+  autoScan,
   onClose,
   onCreated,
 }: {
   dealershipId: string;
-  board: string;
-  stage: string;
+  board?: string;
+  stage?: string;
   vehicle?: Vehicle;
+  autoScan?: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
   const isEditing = !!vehicle;
+  const needsBucketPicker = !isEditing && !board && !stage;
 
+  const [destination, setDestination] = useState('');
   const [vin, setVin] = useState(vehicle?.vin ?? '');
   const [year, setYear] = useState(vehicle?.year != null ? String(vehicle.year) : '');
   const [make, setMake] = useState(vehicle?.make ?? '');
@@ -30,10 +37,15 @@ export default function AddVehicleModal({
   const [stockNumber, setStockNumber] = useState(vehicle?.stock_number ?? '');
   const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : '');
   const [decoding, setDecoding] = useState(false);
-  const [scannerOpen, setScannerOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (autoScan) setCameraOpen(true);
+  }, [autoScan]);
 
   async function runDecode(vinToDecode: string) {
     setError(null);
@@ -51,13 +63,28 @@ export default function AddVehicleModal({
     setTrim(result.trim);
   }
 
-  function handleScan(text: string) {
-    setScannerOpen(false);
-    setVin(text);
-    runDecode(text);
+  async function handlePhotoCapture(dataUrl: string) {
+    setCameraOpen(false);
+    setScanning(true);
+    setError(null);
+
+    const detected = await extractVinFromImage(dataUrl);
+    setScanning(false);
+
+    if (!detected) {
+      setError("Couldn't read a clear VIN from that photo — check the field below and type or retake it.");
+      return;
+    }
+    setVin(detected);
+    runDecode(detected);
   }
 
   async function handleSubmit() {
+    if (needsBucketPicker && !destination) {
+      setError('Pick where this vehicle goes first.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -87,31 +114,14 @@ export default function AddVehicleModal({
       return;
     }
 
-    const now = new Date().toISOString();
-    const startsRecon = stage !== 'inbound_trade_in';
+    const [finalBoard, finalStage] = needsBucketPicker ? destination.split('::') : [board!, stage!];
 
-    const { data: created, error: insertError } = await supabase
-      .from('vehicles')
-      .insert({
-        dealership_id: dealershipId,
-        board,
-        stage,
-        stage_entered_at: now,
-        recon_started_at: startsRecon ? now : null,
-        position: 999999,
-        ...sharedFields,
-      })
-      .select()
-      .single();
-
-    if (!insertError && created) {
-      await supabase.from('stage_history').insert({
-        vehicle_id: created.id,
-        board,
-        stage,
-        entered_at: now,
-      });
-    }
+    const { error: insertError } = await createVehicle({
+      dealershipId,
+      board: finalBoard,
+      stage: finalStage,
+      ...sharedFields,
+    });
 
     setSaving(false);
 
@@ -165,10 +175,11 @@ export default function AddVehicleModal({
               />
               <button
                 type="button"
-                onClick={() => setScannerOpen(true)}
-                className="px-3 rounded-lg bg-ink text-white text-sm font-medium"
+                onClick={() => setCameraOpen(true)}
+                disabled={scanning}
+                className="px-3 rounded-lg bg-ink text-white text-sm font-medium disabled:opacity-60"
               >
-                Scan
+                {scanning ? 'Reading…' : 'Scan'}
               </button>
             </div>
             <button
@@ -180,6 +191,30 @@ export default function AddVehicleModal({
               {decoding ? 'Decoding…' : 'Decode VIN'}
             </button>
           </div>
+
+          {needsBucketPicker && (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Where does this go?</label>
+              <select
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base bg-white"
+              >
+                <option value="" disabled>
+                  Choose a board and column…
+                </option>
+                {ALL_BOARDS.map((b) => (
+                  <optgroup key={b.key} label={b.label}>
+                    {b.stages.map((s) => (
+                      <option key={`${b.key}::${s.key}`} value={`${b.key}::${s.key}`}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Stock number (optional)</label>
@@ -270,7 +305,7 @@ export default function AddVehicleModal({
         </div>
       </div>
 
-      {scannerOpen && <VinScanner onScan={handleScan} onClose={() => setScannerOpen(false)} />}
+      {cameraOpen && <VinPhotoCapture onCapture={handlePhotoCapture} onClose={() => setCameraOpen(false)} />}
     </div>
   );
 }

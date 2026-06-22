@@ -88,7 +88,7 @@ VALUES (
 ```
 
 That looks up the dealership by name, so this same snippet works for any dealership you've created — just change the name and the person's info.
-- [ ] VIN camera scan — paused for now; many VIN stickers don't even have a barcode, and live barcode scanning in-browser turned out to be unreliable. Manual entry + Decode button is the current path.
+- [x] VIN scan rebuilt around photo + on-device text recognition (Tesseract.js) instead of barcode scanning — works on any VIN location, including dash plates with no barcode at all. A floating camera button on the board lets you scan first and pick the destination column after it decodes.
 
 ## Owner mode setup (one-time)
 
