@@ -54,6 +54,8 @@ That starts it at http://localhost:5173
 - [x] Move a vehicle to any board, not just within the current one — the dropdown now groups every destination by board
 - [x] Self-service signup — invite a teammate by email, they create their own password and get auto-linked to your dealership (requires `supabase/invite_system_migration.sql`)
 - [x] Self-service password change — anyone logged in can change their own password, including accounts you created for them manually
+- [x] Live cross-column drag preview — cards now visually shift into the column you're hovering over, not just on drop
+- [x] Card title leads with stock number (e.g. "923567-2017 GMC Sierra 1500 SLT"), no longer duplicated below
 - [x] Pause or permanently delete a dealership from Owner Mode (requires `supabase/deactivate_delete_dealership_migration.sql`) — pausing blocks their access without touching their data; delete requires typing the dealership's exact name to confirm
 - [x] Per-column add button
 - [x] Dealership name in header

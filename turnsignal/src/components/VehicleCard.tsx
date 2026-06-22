@@ -78,7 +78,7 @@ export default function VehicleCard({
   const days = daysSince(vehicle.recon_started_at ?? vehicle.stage_entered_at);
   const thresholds = getThresholds(vehicle.board, vehicle.stage);
   const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
-  const vehicleLabel = `${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
+  const vehicleLabel = `${vehicle.stock_number ? vehicle.stock_number + '-' : ''}${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: vehicle.id,
@@ -141,6 +141,7 @@ export default function VehicleCard({
           </svg>
         </button>
         <button onClick={() => setExpanded(true)} className="flex-1 text-left text-sm text-steel line-through truncate">
+          {vehicle.stock_number && <span className="tabular">{vehicle.stock_number}-</span>}
           {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
           {vehicle.trim ? ` ${vehicle.trim}` : ''}
         </button>
@@ -198,6 +199,7 @@ export default function VehicleCard({
               vehicle.completed ? 'text-steel line-through' : 'text-ink'
             }`}
           >
+            {vehicle.stock_number && <span className="tabular">{vehicle.stock_number}-</span>}
             {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
             {vehicle.trim ? ` ${vehicle.trim}` : ''}
           </p>
@@ -211,7 +213,6 @@ export default function VehicleCard({
 
       <div className="mt-2 text-xs text-steel space-y-0.5 pl-7">
         {vehicle.color && <p>{vehicle.color}</p>}
-        {vehicle.stock_number && <p className="tabular">Stock #{vehicle.stock_number}</p>}
         {vehicle.vin && <p className="truncate tabular">VIN: {vehicle.vin}</p>}
         {vehicle.mileage != null && <p className="tabular">{vehicle.mileage.toLocaleString()} mi</p>}
         {vehicle.loaned_to && <p>Loaned to: {vehicle.loaned_to}</p>}

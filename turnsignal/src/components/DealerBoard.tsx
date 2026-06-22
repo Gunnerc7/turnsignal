@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DndContext,
   defaultDropAnimationSideEffects,
   DragEndEvent,
+  DragOverEvent,
   DragOverlay,
   DragStartEvent,
   PointerSensor,
@@ -30,6 +31,10 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
   const [error, setError] = useState<string | null>(null);
   const [addModal, setAddModal] = useState<{ board: string; stage: string } | null>(null);
   const [draggingVehicle, setDraggingVehicle] = useState<Vehicle | null>(null);
+  // The stage a vehicle was in before the drag started — used at drop time
+  // to know whether a real stage change happened (and stage history needs
+  // updating), separate from whatever it's been previewed into mid-drag.
+  const dragOriginStage = useRef<string | null>(null);
 
   // A small activation distance means a normal tap (e.g. opening the dropdown)
   // doesn't accidentally start a drag — only a deliberate press-and-move does.
@@ -61,27 +66,56 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
   function handleDragStart(event: DragStartEvent) {
     const vehicle = vehicles.find((v) => v.id === event.active.id);
     setDraggingVehicle(vehicle ?? null);
+    dragOriginStage.current = vehicle?.stage ?? null;
+  }
+
+  // Fires continuously while dragging. dnd-kit automatically previews
+  // reordering *within* a column on its own — but it can only do that for
+  // columns whose item list already contains the dragged card. Crossing
+  // into a different column needs us to actually move the card into that
+  // column's list ourselves, live, which is what creates the "snap" feel.
+  function handleDragOver(event: DragOverEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+    if (activeId === overId) return;
+
+    setVehicles((prev) => {
+      const activeVehicle = prev.find((v) => v.id === activeId);
+      if (!activeVehicle) return prev;
+
+      const overVehicle = prev.find((v) => v.id === overId);
+      const destinationStage = overVehicle ? overVehicle.stage : overId;
+
+      if (activeVehicle.stage === destinationStage) return prev;
+
+      return prev.map((v) => (v.id === activeId ? { ...v, stage: destinationStage } : v));
+    });
   }
 
   async function handleDragEnd(event: DragEndEvent) {
     setDraggingVehicle(null);
     const activeId = event.active.id as string;
     const overId = event.over?.id as string | undefined;
-    if (!overId || activeId === overId) return;
+    const originStage = dragOriginStage.current;
+    dragOriginStage.current = null;
 
+    if (!overId) return;
+
+    // By drop time, onDragOver may have already moved this vehicle's stage
+    // in local state to wherever it was last hovering — that's its real
+    // destination now, regardless of where the pointer technically released.
     const activeVehicle = vehicles.find((v) => v.id === activeId);
     if (!activeVehicle) return;
-
-    // overId is either another vehicle's id (dropped onto a card — reorder
-    // and possibly change stage) or a stage key directly (dropped onto
-    // empty space in a column — just append to that stage).
-    const overVehicle = vehicles.find((v) => v.id === overId);
-    const destinationStage = overVehicle ? overVehicle.stage : overId;
+    const destinationStage = activeVehicle.stage;
 
     const stageSiblings = vehicles
       .filter((v) => v.board === activeVehicle.board && v.stage === destinationStage && v.id !== activeId)
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 
+    const overVehicle = vehicles.find((v) => v.id === overId);
     const insertIndex = overVehicle
       ? Math.max(0, stageSiblings.findIndex((v) => v.id === overId))
       : stageSiblings.length;
@@ -92,7 +126,7 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
       ...stageSiblings.slice(insertIndex).map((v) => v.id),
     ];
 
-    if (activeVehicle.stage !== destinationStage) {
+    if (originStage && originStage !== destinationStage) {
       await moveVehicleToStage(activeId, activeVehicle.board, destinationStage);
     }
     await reorderWithinStage(newOrderIds);
@@ -123,7 +157,7 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
 
       {error && <p className="text-signal-red text-sm px-4 py-2">{error}</p>}
 
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
         <main className="flex-1 overflow-x-auto p-4">
           <div className="snap-row flex gap-4 h-full">
             {activeBoard.stages.map((stage) => (
