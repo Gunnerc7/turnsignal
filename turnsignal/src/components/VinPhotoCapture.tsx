@@ -18,7 +18,7 @@ export default function VinPhotoCapture({
 
   useEffect(() => {
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'environment' } })
+      .getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } })
       .then((stream) => {
         streamRef.current = stream;
         if (videoRef.current) {
@@ -65,7 +65,17 @@ export default function VinPhotoCapture({
     }
     ctx.putImageData(imageData, 0, 0);
 
-    onCapture(canvas.toDataURL('image/jpeg', 0.95));
+    // Tesseract reads upscaled text more reliably than small source crops —
+    // this is a specifically documented accuracy factor for OCR engines.
+    const upscale = 2.5;
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = canvas.width * upscale;
+    finalCanvas.height = canvas.height * upscale;
+    const finalCtx = finalCanvas.getContext('2d');
+    if (!finalCtx) return;
+    finalCtx.drawImage(canvas, 0, 0, finalCanvas.width, finalCanvas.height);
+
+    onCapture(finalCanvas.toDataURL('image/jpeg', 0.95));
   }
 
   return (

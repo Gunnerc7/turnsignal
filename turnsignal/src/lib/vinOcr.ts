@@ -5,24 +5,32 @@ import { createWorker, PSM } from 'tesseract.js';
 const VIN_CHARS = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789';
 const VIN_PATTERN = new RegExp(`[${VIN_CHARS}]{17}`);
 
-export async function extractVinFromImage(imageDataUrl: string): Promise<string | null> {
+async function recognizeWithMode(imageDataUrl: string, mode: PSM): Promise<string> {
   const worker = await createWorker('eng');
-
-  // Telling Tesseract this is one line of VIN-style characters — not a full
-  // page of mixed text — makes a real difference in accuracy.
   await worker.setParameters({
-    tessedit_pageseg_mode: PSM.SINGLE_LINE,
+    tessedit_pageseg_mode: mode,
     tessedit_char_whitelist: VIN_CHARS,
   });
-
   const result = await worker.recognize(imageDataUrl);
   await worker.terminate();
+  return result.data.text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
 
-  const cleaned = result.data.text.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const match = cleaned.match(VIN_PATTERN);
-  if (match) return match[0];
+export async function extractVinFromImage(imageDataUrl: string): Promise<string | null> {
+  const firstPass = await recognizeWithMode(imageDataUrl, PSM.SINGLE_LINE);
+  const firstMatch = firstPass.match(VIN_PATTERN);
+  if (firstMatch) return firstMatch[0];
 
-  // No clean 17-character match — still hand back whatever was read so
-  // there's something to start correcting instead of an empty field.
-  return cleaned.length > 0 ? cleaned.slice(0, 17) : null;
+  // SINGLE_LINE didn't land on a clean 17 characters — RAW_LINE skips some
+  // of Tesseract's internal text-line heuristics, which can be exactly
+  // what causes characters to get silently dropped rather than misread.
+  const secondPass = await recognizeWithMode(imageDataUrl, PSM.RAW_LINE);
+  const secondMatch = secondPass.match(VIN_PATTERN);
+  if (secondMatch) return secondMatch[0];
+
+  // Neither pass found a clean 17-character run — hand back whichever
+  // attempt read more characters, so there's a real starting point to
+  // correct instead of an empty field.
+  const best = secondPass.length > firstPass.length ? secondPass : firstPass;
+  return best.length > 0 ? best.slice(0, 17) : null;
 }
