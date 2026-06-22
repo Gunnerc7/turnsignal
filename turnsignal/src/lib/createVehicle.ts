@@ -10,7 +10,7 @@ export type NewVehicleFields = {
   model: string | null;
   trim: string | null;
   color: string | null;
-  stockNumber: string | null;
+  stock_number: string | null;
   mileage: number | null;
 };
 
@@ -33,7 +33,7 @@ export async function createVehicle(fields: NewVehicleFields) {
       model: fields.model,
       trim: fields.trim,
       color: fields.color,
-      stock_number: fields.stockNumber,
+      stock_number: fields.stock_number,
       mileage: fields.mileage,
     })
     .select()
