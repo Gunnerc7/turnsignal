@@ -79,7 +79,7 @@ export default function VinPhotoCapture({
   }
 
   return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col">
+    <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-hidden">
       <div className="flex justify-between items-center px-4 py-3 text-white flex-shrink-0">
         <p className="font-medium">Photograph the VIN</p>
         <button onClick={onClose} className="text-sm text-steel">
@@ -90,8 +90,8 @@ export default function VinPhotoCapture({
       {error ? (
         <p className="text-white text-sm p-4">{error}</p>
       ) : (
-        <div className="relative flex-1">
-          <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+        <div className="relative flex-1 min-h-0">
+          <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
           <div
             className="absolute border-2 border-signal-green rounded-md pointer-events-none"
             style={{
