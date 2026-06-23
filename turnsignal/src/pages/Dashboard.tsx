@@ -7,7 +7,7 @@ import InviteTeammateModal from '../components/InviteTeammateModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import EditNameModal from '../components/EditNameModal';
 
-type Profile = { dealership_id: string | null; role: string };
+type Profile = { dealership_id: string | null; role: string; dealership_role: string | null };
 type ViewingDealership = { id: string; name: string };
 
 export default function Dashboard() {
@@ -28,7 +28,7 @@ export default function Dashboard() {
 
     const { data, error: profileError } = await supabase
       .from('profiles')
-      .select('dealership_id, role')
+      .select('dealership_id, role, dealership_role')
       .eq('id', session.user.id)
       .single();
 
@@ -70,6 +70,8 @@ export default function Dashboard() {
   }
 
   const isOwner = profile.role === 'owner';
+  const isManager = profile.dealership_role === 'manager';
+  const canAssignRoles = isOwner || isManager;
   const headerLabel = isOwner
     ? viewingAsOwner
       ? `Owner Mode — ${viewingAsOwner.name}`
@@ -117,7 +119,7 @@ export default function Dashboard() {
 
       {isOwner ? (
         viewingAsOwner ? (
-          <DealerBoard dealershipId={viewingAsOwner.id} isOwner />
+          <DealerBoard dealershipId={viewingAsOwner.id} isOwner isManager={isManager} />
         ) : (
           <DealershipPicker onSelect={setViewingAsOwner} />
         )
@@ -129,7 +131,7 @@ export default function Dashboard() {
           </p>
         </div>
       ) : profile.dealership_id ? (
-        <DealerBoard dealershipId={profile.dealership_id} isOwner={false} />
+        <DealerBoard dealershipId={profile.dealership_id} isOwner={false} isManager={isManager} />
       ) : (
         <p className="p-4 text-signal-red text-sm">
           This account isn't linked to a dealership yet.
@@ -137,7 +139,11 @@ export default function Dashboard() {
       )}
 
       {inviteOpen && currentDealershipId && (
-        <InviteTeammateModal dealershipId={currentDealershipId} onClose={() => setInviteOpen(false)} />
+        <InviteTeammateModal
+          dealershipId={currentDealershipId}
+          canAssignRoles={canAssignRoles}
+          onClose={() => setInviteOpen(false)}
+        />
       )}
 
       {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}

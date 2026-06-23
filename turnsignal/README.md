@@ -57,6 +57,7 @@ That starts it at http://localhost:5173
 - [x] Per-dealership aging colors — Owner can set how many days until yellow/red for each dealership individually (requires `supabase/thresholds_and_names_migration.sql`). "🎨 Aging colors" appears next to "⚙ Manage" for Owner only.
 - [x] Edit or delete any note after the fact — no more being stuck with a typo or a note on the wrong vehicle
 - [x] First and last names — collected at signup, editable anytime via the new "Name" button. Notes, added-by, and completed-by all show the real name once it's set, falling back to the old email-based short name for anyone who hasn't set one yet.
+- [x] Dealership roles — Manager, Sales, Service, Detail, Photo (requires `supabase/dealership_roles_migration.sql`). Owner can designate the first Manager for any dealership via the new "👤 Roles" button; once someone is a Manager, they can assign roles to others in their own dealership too — including at invite time. Roles are optional and don't restrict access yet (that's planned for later); right now they're just labels.
 - [x] Move a vehicle to any board, not just within the current one — the dropdown now groups every destination by board
 - [x] Self-service signup — invite a teammate by email, they create their own password and get auto-linked to your dealership (requires `supabase/invite_system_migration.sql`)
 - [x] Self-service password change — anyone logged in can change their own password, including accounts you created for them manually

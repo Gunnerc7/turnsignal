@@ -19,6 +19,7 @@ import AddVehicleModal from './AddVehicleModal';
 import VehicleCard from './VehicleCard';
 import ManageBoardsModal from './ManageBoardsModal';
 import DealershipSettingsModal from './DealershipSettingsModal';
+import TeamRolesModal from './TeamRolesModal';
 
 const dropAnimation = {
   duration: 220,
@@ -29,9 +30,11 @@ const dropAnimation = {
 export default function DealerBoard({
   dealershipId,
   isOwner,
+  isManager,
 }: {
   dealershipId: string;
   isOwner: boolean;
+  isManager: boolean;
 }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [boards, setBoards] = useState<BoardConfig[]>([]);
@@ -42,6 +45,7 @@ export default function DealerBoard({
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [manageBoardsOpen, setManageBoardsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rolesOpen, setRolesOpen] = useState(false);
   const [yellowDays, setYellowDays] = useState(3);
   const [redDays, setRedDays] = useState(5);
   const [draggingVehicle, setDraggingVehicle] = useState<Vehicle | null>(null);
@@ -205,6 +209,11 @@ export default function DealerBoard({
             </button>
           </>
         )}
+        {(isOwner || isManager) && (
+          <button onClick={() => setRolesOpen(true)} className="text-steel text-sm whitespace-nowrap px-2">
+            👤 Roles
+          </button>
+        )}
       </nav>
 
       {error && <p className="text-signal-red text-sm px-4 py-2">{error}</p>}
@@ -302,6 +311,8 @@ export default function DealerBoard({
           onChanged={loadThresholds}
         />
       )}
+
+      {rolesOpen && <TeamRolesModal dealershipId={dealershipId} onClose={() => setRolesOpen(false)} />}
     </div>
   );
 }

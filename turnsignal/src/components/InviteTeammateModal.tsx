@@ -1,14 +1,19 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
+const ROLE_OPTIONS = ['manager', 'sales', 'service', 'detail', 'photo'];
+
 export default function InviteTeammateModal({
   dealershipId,
+  canAssignRoles,
   onClose,
 }: {
   dealershipId: string;
+  canAssignRoles: boolean;
   onClose: () => void;
 }) {
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState('');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +26,7 @@ export default function InviteTeammateModal({
     const { error: insertError } = await supabase.from('dealership_invites').insert({
       dealership_id: dealershipId,
       email: email.trim().toLowerCase(),
+      dealership_role: canAssignRoles && role ? role : null,
     });
 
     setSaving(false);
@@ -65,6 +71,25 @@ export default function InviteTeammateModal({
               placeholder="name@example.com"
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base mb-3"
             />
+
+            {canAssignRoles && (
+              <>
+                <label className="block text-sm font-medium text-ink mb-1">Role (optional)</label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base bg-white mb-3"
+                >
+                  <option value="">No role</option>
+                  {ROLE_OPTIONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r.charAt(0).toUpperCase() + r.slice(1)}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
             {error && <p className="text-signal-red text-sm mb-3">{error}</p>}
             <button
               onClick={handleInvite}
