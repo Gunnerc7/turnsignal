@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { StageHistoryRow } from '../lib/types';
-import { getBoard } from '../lib/boards';
+import { BoardConfig, getBoard } from '../lib/boards';
 
 function durationLabel(enteredAt: string, exitedAt: string | null): string {
   const start = new Date(enteredAt).getTime();
@@ -15,11 +15,13 @@ export default function StageTimelineModal({
   vehicleId,
   vehicleLabel,
   board,
+  boards,
   onClose,
 }: {
   vehicleId: string;
   vehicleLabel: string;
   board: string;
+  boards: BoardConfig[];
   onClose: () => void;
 }) {
   const [rows, setRows] = useState<StageHistoryRow[]>([]);
@@ -37,9 +39,9 @@ export default function StageTimelineModal({
       });
   }, [vehicleId]);
 
-  const boardConfig = getBoard(board);
+  const boardConfig = getBoard(boards, board);
   const labelFor = (stageKey: string) =>
-    boardConfig.stages.find((s) => s.key === stageKey)?.label ?? stageKey;
+    boardConfig?.stages.find((s) => s.key === stageKey)?.label ?? stageKey;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-40 flex items-end sm:items-center justify-center">

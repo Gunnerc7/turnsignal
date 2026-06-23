@@ -12,11 +12,12 @@ import {
 } from '@dnd-kit/core';
 import { supabase } from '../lib/supabase';
 import { moveVehicleToStage, reorderWithinStage } from '../lib/moveVehicle';
-import { ALL_BOARDS, getBoard } from '../lib/boards';
+import { BoardConfig, fetchBoards, getBoard } from '../lib/boards';
 import { Vehicle } from '../lib/types';
 import KanbanColumn from './KanbanColumn';
 import AddVehicleModal from './AddVehicleModal';
 import VehicleCard from './VehicleCard';
+import ManageBoardsModal from './ManageBoardsModal';
 
 const dropAnimation = {
   duration: 220,
@@ -24,13 +25,21 @@ const dropAnimation = {
   sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.4' } } }),
 };
 
-export default function DealerBoard({ dealershipId }: { dealershipId: string }) {
+export default function DealerBoard({
+  dealershipId,
+  isOwner,
+}: {
+  dealershipId: string;
+  isOwner: boolean;
+}) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [boards, setBoards] = useState<BoardConfig[]>([]);
   const [activeBoardKey, setActiveBoardKey] = useState('main');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addModal, setAddModal] = useState<{ board: string; stage: string } | null>(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [manageBoardsOpen, setManageBoardsOpen] = useState(false);
   const [draggingVehicle, setDraggingVehicle] = useState<Vehicle | null>(null);
   // The stage a vehicle was in before the drag started — used at drop time
   // to know whether a real stage change happened (and stage history needs
@@ -60,9 +69,23 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
     setLoading(false);
   }, [dealershipId]);
 
+  const loadBoards = useCallback(async () => {
+    const fetched = await fetchBoards(dealershipId);
+    setBoards(fetched);
+  }, [dealershipId]);
+
   useEffect(() => {
     loadVehicles();
-  }, [loadVehicles]);
+    loadBoards();
+  }, [loadVehicles, loadBoards]);
+
+  // If the currently selected tab no longer exists (e.g. it was just
+  // deleted, or this is the first load), fall back to the first board.
+  useEffect(() => {
+    if (boards.length > 0 && !boards.find((b) => b.key === activeBoardKey)) {
+      setActiveBoardKey(boards[0].key);
+    }
+  }, [boards, activeBoardKey]);
 
   function handleDragStart(event: DragStartEvent) {
     const vehicle = vehicles.find((v) => v.id === event.active.id);
@@ -134,16 +157,16 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
     loadVehicles();
   }
 
-  const activeBoard = getBoard(activeBoardKey);
+  const activeBoard = getBoard(boards, activeBoardKey);
 
-  if (loading) {
-    return <p className="text-steel text-sm p-4">Loading vehicles…</p>;
+  if (loading || boards.length === 0) {
+    return <p className="text-steel text-sm p-4">Loading…</p>;
   }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <nav className="flex gap-1.5 overflow-x-auto px-4 py-2.5 bg-white border-b border-gray-200">
-        {ALL_BOARDS.map((b) => (
+      <nav className="flex items-center gap-1.5 overflow-x-auto px-4 py-2.5 bg-white border-b border-gray-200">
+        {boards.map((b) => (
           <button
             key={b.key}
             onClick={() => setActiveBoardKey(b.key)}
@@ -154,36 +177,47 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
             {b.label}
           </button>
         ))}
+        {isOwner && (
+          <button
+            onClick={() => setManageBoardsOpen(true)}
+            className="ml-1 text-steel text-sm whitespace-nowrap px-2"
+          >
+            ⚙ Manage
+          </button>
+        )}
       </nav>
 
       {error && <p className="text-signal-red text-sm px-4 py-2">{error}</p>}
 
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-        <main className="flex-1 overflow-x-auto p-4">
-          <div className="snap-row flex gap-4 h-full">
-            {activeBoard.stages.map((stage) => (
-              <KanbanColumn
-                key={stage.key}
-                label={stage.label}
-                stageKey={stage.key}
-                vehicles={vehicles.filter(
-                  (v) => v.board === activeBoard.key && v.stage === stage.key
-                )}
-                onAddClick={() => setAddModal({ board: activeBoard.key, stage: stage.key })}
-                onMoved={loadVehicles}
-              />
-            ))}
-          </div>
-        </main>
-
-        <DragOverlay dropAnimation={dropAnimation}>
-          {draggingVehicle && (
-            <div className="w-[86vw] sm:w-72 rotate-1 scale-105 shadow-lift rounded-xl">
-              <VehicleCard vehicle={draggingVehicle} onMoved={() => {}} />
+      {activeBoard && (
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+          <main className="flex-1 overflow-x-auto p-4">
+            <div className="snap-row flex gap-4 h-full">
+              {activeBoard.stages.map((stage) => (
+                <KanbanColumn
+                  key={stage.key}
+                  label={stage.label}
+                  stageKey={stage.key}
+                  boards={boards}
+                  vehicles={vehicles.filter(
+                    (v) => v.board === activeBoard.key && v.stage === stage.key
+                  )}
+                  onAddClick={() => setAddModal({ board: activeBoard.key, stage: stage.key })}
+                  onMoved={loadVehicles}
+                />
+              ))}
             </div>
-          )}
-        </DragOverlay>
-      </DndContext>
+          </main>
+
+          <DragOverlay dropAnimation={dropAnimation}>
+            {draggingVehicle && (
+              <div className="w-[86vw] sm:w-72 rotate-1 scale-105 shadow-lift rounded-xl">
+                <VehicleCard vehicle={draggingVehicle} boards={boards} onMoved={() => {}} />
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       <button
         onClick={() => setScanModalOpen(true)}
@@ -204,6 +238,7 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
       {scanModalOpen && (
         <AddVehicleModal
           dealershipId={dealershipId}
+          boards={boards}
           autoScan
           onClose={() => setScanModalOpen(false)}
           onCreated={() => {
@@ -216,6 +251,7 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
       {addModal && (
         <AddVehicleModal
           dealershipId={dealershipId}
+          boards={boards}
           board={addModal.board}
           stage={addModal.stage}
           onClose={() => setAddModal(null)}
@@ -223,6 +259,15 @@ export default function DealerBoard({ dealershipId }: { dealershipId: string }) 
             setAddModal(null);
             loadVehicles();
           }}
+        />
+      )}
+
+      {manageBoardsOpen && (
+        <ManageBoardsModal
+          dealershipId={dealershipId}
+          boards={boards}
+          onClose={() => setManageBoardsOpen(false)}
+          onChanged={loadBoards}
         />
       )}
     </div>

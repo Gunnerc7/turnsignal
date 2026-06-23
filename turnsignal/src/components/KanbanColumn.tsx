@@ -1,17 +1,20 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { BoardConfig } from '../lib/boards';
 import { Vehicle } from '../lib/types';
 import VehicleCard from './VehicleCard';
 
 export default function KanbanColumn({
   label,
   stageKey,
+  boards,
   vehicles,
   onAddClick,
   onMoved,
 }: {
   label: string;
   stageKey: string;
+  boards: BoardConfig[];
   vehicles: Vehicle[];
   onAddClick: () => void;
   onMoved: () => void;
@@ -44,7 +47,7 @@ export default function KanbanColumn({
         ) : (
           <SortableContext items={vehicles.map((v) => v.id)} strategy={verticalListSortingStrategy}>
             {vehicles.map((v) => (
-              <VehicleCard key={v.id} vehicle={v} onMoved={onMoved} />
+              <VehicleCard key={v.id} vehicle={v} boards={boards} onMoved={onMoved} />
             ))}
           </SortableContext>
         )}

@@ -51,6 +51,10 @@ That starts it at http://localhost:5173
 - [x] Completed cards collapse to a slim row, Planner-style — tap the name to peek at full details again
 - [x] Loaners board now has two columns: Loaners and Service Loaners
 - [x] Reorder cards within a column by dragging — uses the `position` column that already existed in the schema
+- [x] Boards and columns are now editable, Owner-only — rename, add, or delete any board or column per dealership (requires `supabase/boards_table_and_audit_migration.sql`). A "⚙ Manage" link appears next to the board tabs only when logged in as Owner.
+- [x] Card title restyled — stock number is now bold and slightly larger, leading the rest of the title
+- [x] Tap the day-count badge itself to open the stage timeline — no separate clock icon needed anymore
+- [x] Audit trail — notes show who wrote them, cards show who added them, and completed cards show who checked them off (same migration as boards, above)
 - [x] Move a vehicle to any board, not just within the current one — the dropdown now groups every destination by board
 - [x] Self-service signup — invite a teammate by email, they create their own password and get auto-linked to your dealership (requires `supabase/invite_system_migration.sql`)
 - [x] Self-service password change — anyone logged in can change their own password, including accounts you created for them manually
@@ -88,7 +92,7 @@ VALUES (
 ```
 
 That looks up the dealership by name, so this same snippet works for any dealership you've created — just change the name and the person's info.
-- [x] VIN scan rebuilt around photo + on-device text recognition (Tesseract.js) instead of barcode scanning — works on any VIN location, including dash plates with no barcode at all. A floating camera button on the board lets you scan first and pick the destination column after it decodes.
+- [paused] VIN scan — built around photo + on-device text recognition, but real-world accuracy hasn't been reliable enough yet. Paused for now; manual VIN entry + the Decode button is the dependable path. The floating camera button is still in the app if you want to keep testing it, but no further tuning is planned right now.
 
 ## Owner mode setup (one-time)
 

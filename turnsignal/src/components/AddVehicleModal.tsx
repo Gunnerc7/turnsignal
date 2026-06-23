@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../lib/AuthContext';
 import { decodeVin } from '../lib/vinDecode';
 import { createVehicle } from '../lib/createVehicle';
 import { extractVinFromImage } from '../lib/vinOcr';
-import { ALL_BOARDS } from '../lib/boards';
+import { BoardConfig } from '../lib/boards';
 import { Vehicle } from '../lib/types';
 import VinPhotoCapture from './VinPhotoCapture';
 
 export default function AddVehicleModal({
   dealershipId,
+  boards,
   board,
   stage,
   vehicle,
@@ -17,6 +19,7 @@ export default function AddVehicleModal({
   onCreated,
 }: {
   dealershipId: string;
+  boards: BoardConfig[];
   board?: string;
   stage?: string;
   vehicle?: Vehicle;
@@ -24,6 +27,7 @@ export default function AddVehicleModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const { session } = useAuth();
   const isEditing = !!vehicle;
   const needsBucketPicker = !isEditing && !board && !stage;
 
@@ -120,6 +124,7 @@ export default function AddVehicleModal({
       dealershipId,
       board: finalBoard,
       stage: finalStage,
+      createdByEmail: session?.user.email ?? null,
       ...sharedFields,
     });
 
@@ -203,7 +208,7 @@ export default function AddVehicleModal({
                 <option value="" disabled>
                   Choose a board and column…
                 </option>
-                {ALL_BOARDS.map((b) => (
+                {boards.map((b) => (
                   <optgroup key={b.key} label={b.label}>
                     {b.stages.map((s) => (
                       <option key={`${b.key}::${s.key}`} value={`${b.key}::${s.key}`}>

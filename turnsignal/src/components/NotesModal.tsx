@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../lib/AuthContext';
 import { VehicleNote } from '../lib/types';
 
 function formatNoteDate(dateStr: string): string {
@@ -9,6 +10,13 @@ function formatNoteDate(dateStr: string): string {
   const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   if (isToday) return `Today, ${time}`;
   return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
+}
+
+// Emails are the only identity we store — the part before the @ reads
+// close enough to a short name/initials for a compact byline.
+function shortName(email: string | null): string {
+  if (!email) return 'Someone';
+  return email.split('@')[0];
 }
 
 export default function NotesModal({
@@ -22,6 +30,7 @@ export default function NotesModal({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const { session } = useAuth();
   const [notes, setNotes] = useState<VehicleNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
@@ -45,7 +54,11 @@ export default function NotesModal({
   async function handleAdd() {
     if (!draft.trim()) return;
     setSaving(true);
-    await supabase.from('vehicle_notes').insert({ vehicle_id: vehicleId, content: draft.trim() });
+    await supabase.from('vehicle_notes').insert({
+      vehicle_id: vehicleId,
+      content: draft.trim(),
+      author_email: session?.user.email ?? null,
+    });
     setDraft('');
     setSaving(false);
     await loadNotes();
@@ -74,7 +87,9 @@ export default function NotesModal({
             notes.map((n) => (
               <div key={n.id} className="bg-asphalt rounded-lg px-3 py-2">
                 <p className="text-sm text-ink whitespace-pre-wrap">{n.content}</p>
-                <p className="text-[11px] text-steel mt-1 tabular">{formatNoteDate(n.created_at)}</p>
+                <p className="text-[11px] text-steel mt-1 tabular">
+                  {shortName(n.author_email)} · {formatNoteDate(n.created_at)}
+                </p>
               </div>
             ))
           )}

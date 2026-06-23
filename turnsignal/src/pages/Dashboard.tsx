@@ -112,7 +112,7 @@ export default function Dashboard() {
 
       {isOwner ? (
         viewingAsOwner ? (
-          <DealerBoard dealershipId={viewingAsOwner.id} />
+          <DealerBoard dealershipId={viewingAsOwner.id} isOwner />
         ) : (
           <DealershipPicker onSelect={setViewingAsOwner} />
         )
@@ -124,7 +124,7 @@ export default function Dashboard() {
           </p>
         </div>
       ) : profile.dealership_id ? (
-        <DealerBoard dealershipId={profile.dealership_id} />
+        <DealerBoard dealershipId={profile.dealership_id} isOwner={false} />
       ) : (
         <p className="p-4 text-signal-red text-sm">
           This account isn't linked to a dealership yet.

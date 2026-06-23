@@ -20,6 +20,8 @@ export type Vehicle = {
   completed: boolean;
   recon_started_at: string | null;
   color: string | null;
+  created_by_email: string | null;
+  completed_by_email: string | null;
 };
 
 export type VehicleNote = {
@@ -27,6 +29,7 @@ export type VehicleNote = {
   vehicle_id: string;
   content: string;
   created_at: string;
+  author_email: string | null;
 };
 
 export type StageHistoryRow = {

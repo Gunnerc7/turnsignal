@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
+import { useAuth } from '../lib/AuthContext';
 import { Vehicle, VehicleNote } from '../lib/types';
 import { moveVehicleToStage } from '../lib/moveVehicle';
 import { supabase } from '../lib/supabase';
-import { ALL_BOARDS } from '../lib/boards';
+import { BoardConfig } from '../lib/boards';
 import NotesModal from './NotesModal';
 import StageTimelineModal from './StageTimelineModal';
 import AddVehicleModal from './AddVehicleModal';
@@ -29,6 +30,13 @@ function formatNoteDate(dateStr: string): string {
   const isToday = date.toDateString() === new Date().toDateString();
   const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   return isToday ? `Today, ${time}` : `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+}
+
+// Emails are the only identity we store — the part before the @ reads
+// close enough to a short name/initials for a compact byline.
+function shortName(email: string | null): string {
+  if (!email) return 'Someone';
+  return email.split('@')[0];
 }
 
 // Waiting on Title typically takes longer than a normal recon stage,
@@ -59,11 +67,14 @@ function ageBadgeStyles(days: number, thresholds: { yellow: number; red: number 
 
 export default function VehicleCard({
   vehicle,
+  boards,
   onMoved,
 }: {
   vehicle: Vehicle;
+  boards: BoardConfig[];
   onMoved: () => void;
 }) {
+  const { session } = useAuth();
   const [moving, setMoving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [notes, setNotes] = useState<VehicleNote[]>([]);
@@ -109,7 +120,14 @@ export default function VehicleCard({
 
   async function handleToggleComplete() {
     setToggling(true);
-    await supabase.from('vehicles').update({ completed: !vehicle.completed }).eq('id', vehicle.id);
+    const nowCompleting = !vehicle.completed;
+    await supabase
+      .from('vehicles')
+      .update({
+        completed: nowCompleting,
+        completed_by_email: nowCompleting ? session?.user.email ?? null : null,
+      })
+      .eq('id', vehicle.id);
     setToggling(false);
     onMoved();
   }
@@ -141,10 +159,13 @@ export default function VehicleCard({
           </svg>
         </button>
         <button onClick={() => setExpanded(true)} className="flex-1 text-left text-sm text-steel line-through truncate">
-          {vehicle.stock_number && <span className="tabular">{vehicle.stock_number}-</span>}
+          {vehicle.stock_number && <span className="font-semibold not-italic">{vehicle.stock_number}-</span>}
           {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
           {vehicle.trim ? ` ${vehicle.trim}` : ''}
         </button>
+        {vehicle.completed_by_email && (
+          <span className="text-[10px] text-steel whitespace-nowrap">{shortName(vehicle.completed_by_email)}</span>
+        )}
       </div>
     );
   }
@@ -195,19 +216,23 @@ export default function VehicleCard({
 
         <div className="flex-1 flex items-start justify-between gap-2">
           <p
-            className={`font-display font-semibold text-sm leading-tight ${
+            className={`font-display leading-tight ${
               vehicle.completed ? 'text-steel line-through' : 'text-ink'
             }`}
           >
-            {vehicle.stock_number && <span className="tabular">{vehicle.stock_number}-</span>}
-            {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
-            {vehicle.trim ? ` ${vehicle.trim}` : ''}
+            {vehicle.stock_number && <span className="text-base font-bold">{vehicle.stock_number}-</span>}
+            <span className="text-sm font-medium">
+              {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
+              {vehicle.trim ? ` ${vehicle.trim}` : ''}
+            </span>
           </p>
-          <span
-            className={`tabular font-display text-xs font-bold rounded-full px-2.5 py-1 whitespace-nowrap ${ageBadgeStyles(days, thresholds)}`}
+          <button
+            onClick={() => setTimelineOpen(true)}
+            aria-label="View stage timeline"
+            className={`tabular font-display text-xs font-bold rounded-full px-2.5 py-1 whitespace-nowrap active:scale-90 transition ${ageBadgeStyles(days, thresholds)}`}
           >
             {days}d
-          </span>
+          </button>
         </div>
       </div>
 
@@ -222,6 +247,9 @@ export default function VehicleCard({
             {new Date(vehicle.loaner_return_date).toLocaleDateString()}
           </p>
         )}
+        {vehicle.created_by_email && (
+          <p className="text-gray-400">Added by {shortName(vehicle.created_by_email)}</p>
+        )}
       </div>
 
       <div className="mt-2 flex gap-2">
@@ -233,29 +261,13 @@ export default function VehicleCard({
             <>
               <p className="text-steel italic line-clamp-1">{latestNote.content}</p>
               <p className="text-[10px] text-gray-400 mt-0.5 tabular">
-                {formatNoteDate(latestNote.created_at)}
+                {shortName(latestNote.author_email)} · {formatNoteDate(latestNote.created_at)}
                 {notes.length > 1 && ` · +${notes.length - 1} more`}
               </p>
             </>
           ) : (
             <p className="text-signal-blue font-medium">+ Add note</p>
           )}
-        </button>
-
-        <button
-          onClick={() => setTimelineOpen(true)}
-          aria-label="View stage timeline"
-          className="bg-gray-50 rounded-md px-2.5 text-steel"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M8 4v4l2.5 2.5M14 8A6 6 0 112 8a6 6 0 0112 0z"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
         </button>
 
         <button
@@ -276,10 +288,12 @@ export default function VehicleCard({
       </div>
 
       {(() => {
-        const otherDestinations = ALL_BOARDS.map((b) => ({
-          board: b,
-          stages: b.stages.filter((s) => !(b.key === vehicle.board && s.key === vehicle.stage)),
-        })).filter((g) => g.stages.length > 0);
+        const otherDestinations = boards
+          .map((b) => ({
+            board: b,
+            stages: b.stages.filter((s) => !(b.key === vehicle.board && s.key === vehicle.stage)),
+          }))
+          .filter((g) => g.stages.length > 0);
 
         return (
           <select
@@ -318,6 +332,7 @@ export default function VehicleCard({
           vehicleId={vehicle.id}
           vehicleLabel={vehicleLabel}
           board={vehicle.board}
+          boards={boards}
           onClose={() => setTimelineOpen(false)}
         />
       )}
@@ -325,6 +340,7 @@ export default function VehicleCard({
       {editOpen && (
         <AddVehicleModal
           dealershipId={vehicle.dealership_id}
+          boards={boards}
           board={vehicle.board}
           stage={vehicle.stage}
           vehicle={vehicle}
