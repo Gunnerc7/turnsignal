@@ -22,6 +22,8 @@ export type Vehicle = {
   color: string | null;
   created_by_email: string | null;
   completed_by_email: string | null;
+  created_by_name: string | null;
+  completed_by_name: string | null;
 };
 
 export type VehicleNote = {
@@ -30,6 +32,7 @@ export type VehicleNote = {
   content: string;
   created_at: string;
   author_email: string | null;
+  author_name: string | null;
 };
 
 export type StageHistoryRow = {

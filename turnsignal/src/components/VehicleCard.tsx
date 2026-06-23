@@ -39,16 +39,21 @@ function shortName(email: string | null): string {
   return email.split('@')[0];
 }
 
-// Waiting on Title typically takes longer than a normal recon stage,
-// so it gets a more lenient threshold than the rest of the board.
+// Waiting on Title typically takes longer than a normal recon stage, so it
+// gets a few extra days of leeway on top of whatever the dealership has set.
 // Inbound/Trade-In is time waiting on pickup or transit — largely out of the
 // dealership's control, so it shouldn't carry the same urgency colors as
 // stages the team actually controls. Returning null means "track the days,
 // but don't color-code it."
-function getThresholds(board: string, stage: string): { yellow: number; red: number } | null {
+function getThresholds(
+  board: string,
+  stage: string,
+  yellowDays: number,
+  redDays: number
+): { yellow: number; red: number } | null {
   if (stage === 'inbound_trade_in') return null;
-  if (board === 'waiting_on_title') return { yellow: 5, red: 10 };
-  return { yellow: 3, red: 5 };
+  if (board === 'waiting_on_title') return { yellow: yellowDays + 2, red: redDays + 5 };
+  return { yellow: yellowDays, red: redDays };
 }
 
 function ageStripe(days: number, thresholds: { yellow: number; red: number } | null) {
@@ -68,13 +73,17 @@ function ageBadgeStyles(days: number, thresholds: { yellow: number; red: number 
 export default function VehicleCard({
   vehicle,
   boards,
+  yellowDays,
+  redDays,
   onMoved,
 }: {
   vehicle: Vehicle;
   boards: BoardConfig[];
+  yellowDays: number;
+  redDays: number;
   onMoved: () => void;
 }) {
-  const { session } = useAuth();
+  const { session, userName } = useAuth();
   const [moving, setMoving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [notes, setNotes] = useState<VehicleNote[]>([]);
@@ -87,7 +96,7 @@ export default function VehicleCard({
   // resets on a stage move. Still in Inbound with no anchor yet? Fall back
   // to the neutral per-stage count from getThresholds returning null.
   const days = daysSince(vehicle.recon_started_at ?? vehicle.stage_entered_at);
-  const thresholds = getThresholds(vehicle.board, vehicle.stage);
+  const thresholds = getThresholds(vehicle.board, vehicle.stage, yellowDays, redDays);
   const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
   const vehicleLabel = `${vehicle.stock_number ? vehicle.stock_number + '-' : ''}${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
 
@@ -126,6 +135,7 @@ export default function VehicleCard({
       .update({
         completed: nowCompleting,
         completed_by_email: nowCompleting ? session?.user.email ?? null : null,
+        completed_by_name: nowCompleting ? userName : null,
       })
       .eq('id', vehicle.id);
     setToggling(false);
@@ -163,8 +173,10 @@ export default function VehicleCard({
           {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
           {vehicle.trim ? ` ${vehicle.trim}` : ''}
         </button>
-        {vehicle.completed_by_email && (
-          <span className="text-[10px] text-steel whitespace-nowrap">{shortName(vehicle.completed_by_email)}</span>
+        {(vehicle.completed_by_name || vehicle.completed_by_email) && (
+          <span className="text-[10px] text-steel whitespace-nowrap">
+            {vehicle.completed_by_name ?? shortName(vehicle.completed_by_email)}
+          </span>
         )}
       </div>
     );
@@ -247,8 +259,8 @@ export default function VehicleCard({
             {new Date(vehicle.loaner_return_date).toLocaleDateString()}
           </p>
         )}
-        {vehicle.created_by_email && (
-          <p className="text-gray-400">Added by {shortName(vehicle.created_by_email)}</p>
+        {(vehicle.created_by_name || vehicle.created_by_email) && (
+          <p className="text-gray-400">Added by {vehicle.created_by_name ?? shortName(vehicle.created_by_email)}</p>
         )}
       </div>
 
@@ -261,7 +273,7 @@ export default function VehicleCard({
             <>
               <p className="text-steel italic line-clamp-1">{latestNote.content}</p>
               <p className="text-[10px] text-gray-400 mt-0.5 tabular">
-                {shortName(latestNote.author_email)} · {formatNoteDate(latestNote.created_at)}
+                {latestNote.author_name ?? shortName(latestNote.author_email)} · {formatNoteDate(latestNote.created_at)}
                 {notes.length > 1 && ` · +${notes.length - 1} more`}
               </p>
             </>

@@ -18,6 +18,7 @@ import KanbanColumn from './KanbanColumn';
 import AddVehicleModal from './AddVehicleModal';
 import VehicleCard from './VehicleCard';
 import ManageBoardsModal from './ManageBoardsModal';
+import DealershipSettingsModal from './DealershipSettingsModal';
 
 const dropAnimation = {
   duration: 220,
@@ -40,6 +41,9 @@ export default function DealerBoard({
   const [addModal, setAddModal] = useState<{ board: string; stage: string } | null>(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [manageBoardsOpen, setManageBoardsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [yellowDays, setYellowDays] = useState(3);
+  const [redDays, setRedDays] = useState(5);
   const [draggingVehicle, setDraggingVehicle] = useState<Vehicle | null>(null);
   // The stage a vehicle was in before the drag started — used at drop time
   // to know whether a real stage change happened (and stage history needs
@@ -74,10 +78,21 @@ export default function DealerBoard({
     setBoards(fetched);
   }, [dealershipId]);
 
+  const loadThresholds = useCallback(async () => {
+    const { data } = await supabase
+      .from('dealerships')
+      .select('yellow_threshold_days, red_threshold_days')
+      .eq('id', dealershipId)
+      .single();
+    setYellowDays(data?.yellow_threshold_days ?? 3);
+    setRedDays(data?.red_threshold_days ?? 5);
+  }, [dealershipId]);
+
   useEffect(() => {
     loadVehicles();
     loadBoards();
-  }, [loadVehicles, loadBoards]);
+    loadThresholds();
+  }, [loadVehicles, loadBoards, loadThresholds]);
 
   // If the currently selected tab no longer exists (e.g. it was just
   // deleted, or this is the first load), fall back to the first board.
@@ -178,12 +193,17 @@ export default function DealerBoard({
           </button>
         ))}
         {isOwner && (
-          <button
-            onClick={() => setManageBoardsOpen(true)}
-            className="ml-1 text-steel text-sm whitespace-nowrap px-2"
-          >
-            ⚙ Manage
-          </button>
+          <>
+            <button
+              onClick={() => setManageBoardsOpen(true)}
+              className="ml-1 text-steel text-sm whitespace-nowrap px-2"
+            >
+              ⚙ Manage
+            </button>
+            <button onClick={() => setSettingsOpen(true)} className="text-steel text-sm whitespace-nowrap px-2">
+              🎨 Aging colors
+            </button>
+          </>
         )}
       </nav>
 
@@ -199,6 +219,8 @@ export default function DealerBoard({
                   label={stage.label}
                   stageKey={stage.key}
                   boards={boards}
+                  yellowDays={yellowDays}
+                  redDays={redDays}
                   vehicles={vehicles.filter(
                     (v) => v.board === activeBoard.key && v.stage === stage.key
                   )}
@@ -212,7 +234,7 @@ export default function DealerBoard({
           <DragOverlay dropAnimation={dropAnimation}>
             {draggingVehicle && (
               <div className="w-[86vw] sm:w-72 rotate-1 scale-105 shadow-lift rounded-xl">
-                <VehicleCard vehicle={draggingVehicle} boards={boards} onMoved={() => {}} />
+                <VehicleCard vehicle={draggingVehicle} boards={boards} yellowDays={yellowDays} redDays={redDays} onMoved={() => {}} />
               </div>
             )}
           </DragOverlay>
@@ -268,6 +290,16 @@ export default function DealerBoard({
           boards={boards}
           onClose={() => setManageBoardsOpen(false)}
           onChanged={loadBoards}
+        />
+      )}
+
+      {settingsOpen && (
+        <DealershipSettingsModal
+          dealershipId={dealershipId}
+          yellowDays={yellowDays}
+          redDays={redDays}
+          onClose={() => setSettingsOpen(false)}
+          onChanged={loadThresholds}
         />
       )}
     </div>

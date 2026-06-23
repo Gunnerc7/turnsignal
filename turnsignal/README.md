@@ -54,7 +54,9 @@ That starts it at http://localhost:5173
 - [x] Boards and columns are now editable, Owner-only — rename, add, or delete any board or column per dealership (requires `supabase/boards_table_and_audit_migration.sql`). A "⚙ Manage" link appears next to the board tabs only when logged in as Owner.
 - [x] Card title restyled — stock number is now bold and slightly larger, leading the rest of the title
 - [x] Tap the day-count badge itself to open the stage timeline — no separate clock icon needed anymore
-- [x] Audit trail — notes show who wrote them, cards show who added them, and completed cards show who checked them off (same migration as boards, above)
+- [x] Per-dealership aging colors — Owner can set how many days until yellow/red for each dealership individually (requires `supabase/thresholds_and_names_migration.sql`). "🎨 Aging colors" appears next to "⚙ Manage" for Owner only.
+- [x] Edit or delete any note after the fact — no more being stuck with a typo or a note on the wrong vehicle
+- [x] First and last names — collected at signup, editable anytime via the new "Name" button. Notes, added-by, and completed-by all show the real name once it's set, falling back to the old email-based short name for anyone who hasn't set one yet.
 - [x] Move a vehicle to any board, not just within the current one — the dropdown now groups every destination by board
 - [x] Self-service signup — invite a teammate by email, they create their own password and get auto-linked to your dealership (requires `supabase/invite_system_migration.sql`)
 - [x] Self-service password change — anyone logged in can change their own password, including accounts you created for them manually

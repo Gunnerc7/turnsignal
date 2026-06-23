@@ -12,8 +12,8 @@ function formatNoteDate(dateStr: string): string {
   return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
-// Emails are the only identity we store — the part before the @ reads
-// close enough to a short name/initials for a compact byline.
+// Emails are the fallback identity — the part before the @ reads close
+// enough to a short name for old entries made before names existed.
 function shortName(email: string | null): string {
   if (!email) return 'Someone';
   return email.split('@')[0];
@@ -30,11 +30,13 @@ export default function NotesModal({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const { session } = useAuth();
+  const { session, userName } = useAuth();
   const [notes, setNotes] = useState<VehicleNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
 
   async function loadNotes() {
     setLoading(true);
@@ -58,9 +60,26 @@ export default function NotesModal({
       vehicle_id: vehicleId,
       content: draft.trim(),
       author_email: session?.user.email ?? null,
+      author_name: userName,
     });
     setDraft('');
     setSaving(false);
+    await loadNotes();
+    onChanged();
+  }
+
+  async function handleSaveEdit(noteId: string) {
+    if (!editDraft.trim()) return;
+    await supabase.from('vehicle_notes').update({ content: editDraft.trim() }).eq('id', noteId);
+    setEditingId(null);
+    await loadNotes();
+    onChanged();
+  }
+
+  async function handleDelete(noteId: string) {
+    const confirmed = window.confirm('Delete this note? This cannot be undone.');
+    if (!confirmed) return;
+    await supabase.from('vehicle_notes').delete().eq('id', noteId);
     await loadNotes();
     onChanged();
   }
@@ -86,10 +105,54 @@ export default function NotesModal({
           ) : (
             notes.map((n) => (
               <div key={n.id} className="bg-asphalt rounded-lg px-3 py-2">
-                <p className="text-sm text-ink whitespace-pre-wrap">{n.content}</p>
-                <p className="text-[11px] text-steel mt-1 tabular">
-                  {shortName(n.author_email)} · {formatNoteDate(n.created_at)}
-                </p>
+                {editingId === n.id ? (
+                  <div>
+                    <textarea
+                      autoFocus
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                      rows={2}
+                      className="w-full text-sm border border-gray-300 rounded-md py-1.5 px-2 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-signal-blue"
+                    />
+                    <div className="flex gap-3 mt-1.5">
+                      <button
+                        onClick={() => handleSaveEdit(n.id)}
+                        className="text-signal-blue text-xs font-medium"
+                      >
+                        Save
+                      </button>
+                      <button onClick={() => setEditingId(null)} className="text-steel text-xs font-medium">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-ink whitespace-pre-wrap">{n.content}</p>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-[11px] text-steel tabular">
+                        {n.author_name ?? shortName(n.author_email)} · {formatNoteDate(n.created_at)}
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingId(n.id);
+                            setEditDraft(n.content);
+                          }}
+                          className="text-[11px] text-signal-blue font-medium"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(n.id)}
+                          className="text-[11px] text-signal-red font-medium"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             ))
           )}

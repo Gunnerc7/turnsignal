@@ -5,6 +5,7 @@ import DealerBoard from '../components/DealerBoard';
 import DealershipPicker from '../components/DealershipPicker';
 import InviteTeammateModal from '../components/InviteTeammateModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import EditNameModal from '../components/EditNameModal';
 
 type Profile = { dealership_id: string | null; role: string };
 type ViewingDealership = { id: string; name: string };
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [nameOpen, setNameOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!session) return;
@@ -96,6 +98,9 @@ export default function Dashboard() {
               Invite
             </button>
           )}
+          <button onClick={() => setNameOpen(true)} className="text-sm text-steel hover:text-white py-2">
+            Name
+          </button>
           <button onClick={() => setPasswordOpen(true)} className="text-sm text-steel hover:text-white py-2">
             Password
           </button>
@@ -136,6 +141,8 @@ export default function Dashboard() {
       )}
 
       {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}
+
+      {nameOpen && <EditNameModal onClose={() => setNameOpen(false)} />}
     </div>
   );
 }

@@ -27,7 +27,7 @@ export default function AddVehicleModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const { session } = useAuth();
+  const { session, userName } = useAuth();
   const isEditing = !!vehicle;
   const needsBucketPicker = !isEditing && !board && !stage;
 
@@ -125,6 +125,7 @@ export default function AddVehicleModal({
       board: finalBoard,
       stage: finalStage,
       createdByEmail: session?.user.email ?? null,
+      createdByName: userName,
       ...sharedFields,
     });
 

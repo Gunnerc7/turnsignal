@@ -8,6 +8,8 @@ export default function KanbanColumn({
   label,
   stageKey,
   boards,
+  yellowDays,
+  redDays,
   vehicles,
   onAddClick,
   onMoved,
@@ -15,6 +17,8 @@ export default function KanbanColumn({
   label: string;
   stageKey: string;
   boards: BoardConfig[];
+  yellowDays: number;
+  redDays: number;
   vehicles: Vehicle[];
   onAddClick: () => void;
   onMoved: () => void;
@@ -47,7 +51,7 @@ export default function KanbanColumn({
         ) : (
           <SortableContext items={vehicles.map((v) => v.id)} strategy={verticalListSortingStrategy}>
             {vehicles.map((v) => (
-              <VehicleCard key={v.id} vehicle={v} boards={boards} onMoved={onMoved} />
+              <VehicleCard key={v.id} vehicle={v} boards={boards} yellowDays={yellowDays} redDays={redDays} onMoved={onMoved} />
             ))}
           </SortableContext>
         )}

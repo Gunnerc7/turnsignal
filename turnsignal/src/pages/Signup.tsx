@@ -2,6 +2,8 @@ import { FormEvent, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 export default function Signup({ onBackToLogin }: { onBackToLogin: () => void }) {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -23,7 +25,11 @@ export default function Signup({ onBackToLogin }: { onBackToLogin: () => void })
     }
 
     setSubmitting(true);
-    const { error: signUpError } = await supabase.auth.signUp({ email, password });
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { first_name: firstName.trim(), last_name: lastName.trim() } },
+    });
     setSubmitting(false);
 
     if (signUpError) {
@@ -61,6 +67,27 @@ export default function Signup({ onBackToLogin }: { onBackToLogin: () => void })
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-lg p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">First name</label>
+              <input
+                required
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-signal-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Last name</label>
+              <input
+                required
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-signal-blue"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Email</label>
             <input

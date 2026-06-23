@@ -13,6 +13,7 @@ export type NewVehicleFields = {
   stock_number: string | null;
   mileage: number | null;
   createdByEmail: string | null;
+  createdByName: string | null;
 };
 
 export async function createVehicle(fields: NewVehicleFields) {
@@ -37,6 +38,7 @@ export async function createVehicle(fields: NewVehicleFields) {
       stock_number: fields.stock_number,
       mileage: fields.mileage,
       created_by_email: fields.createdByEmail,
+      created_by_name: fields.createdByName,
     })
     .select()
     .single();
