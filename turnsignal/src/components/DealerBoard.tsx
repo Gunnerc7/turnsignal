@@ -228,7 +228,7 @@ export default function DealerBoard({
 
       {activeBoard && (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-          <main ref={boardScrollRef} className="flex-1 overflow-x-auto p-4">
+          <main ref={boardScrollRef} className="board-scroll flex-1 overflow-x-auto p-4">
             <div className="snap-row flex gap-4 h-full">
               {activeBoard.stages.map((stage) => (
                 <KanbanColumn
@@ -238,9 +238,12 @@ export default function DealerBoard({
                   boards={boards}
                   yellowDays={yellowDays}
                   redDays={redDays}
-                  vehicles={vehicles.filter(
-                    (v) => v.board === activeBoard.key && v.stage === stage.key
-                  )}
+                  vehicles={vehicles
+                    .filter((v) => v.board === activeBoard.key && v.stage === stage.key)
+                    .sort((a, b) => {
+                      if (a.completed !== b.completed) return a.completed ? 1 : -1;
+                      return (a.position ?? 0) - (b.position ?? 0);
+                    })}
                   onAddClick={() => setAddModal({ board: activeBoard.key, stage: stage.key })}
                   onMoved={loadVehicles}
                 />

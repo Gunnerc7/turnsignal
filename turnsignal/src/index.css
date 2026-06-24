@@ -33,3 +33,22 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* A visible, always-on scrollbar for the board's horizontal scroll area —
+   without this, a desktop window that isn't maximized has no obvious way
+   to tell there's more content off to the side, let alone drag to see it. */
+.board-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: #94a3b8 #e2e8f0;
+}
+.board-scroll::-webkit-scrollbar {
+  height: 12px;
+}
+.board-scroll::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+.board-scroll::-webkit-scrollbar-thumb {
+  background-color: #94a3b8;
+  border-radius: 8px;
+  border: 2px solid #e2e8f0;
+}

@@ -33,8 +33,8 @@ export default function KanbanColumn({
       }`}
     >
       <div className="flex items-center justify-between mb-3 px-0.5">
-        <p className="font-display font-semibold text-ink text-sm">
-          {label} <span className="text-steel font-normal">({vehicles.length})</span>
+        <p className="font-display font-bold text-ink text-base">
+          {label} <span className="text-steel font-normal text-sm">({vehicles.length})</span>
         </p>
         <button
           onClick={onAddClick}

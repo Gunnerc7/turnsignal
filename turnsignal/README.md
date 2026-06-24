@@ -67,6 +67,11 @@ That starts it at http://localhost:5173
 - [x] Owner now automatically gets every feature a role gets, including the store switcher — fixed the gap where it only checked for Manager
 - [x] Dealer list reorganized into three columns: Dealer Groups (one row per group, click to pick a specific store inside it), Dealers (standalone, ungrouped), and Paused
 - [x] Analytics page — Owner and Manager only, "📊 Analytics" button right next to the dealership name. Current count and average time per stage, turn time (average/fastest/slowest) from Inbound to Price for Lot, bottleneck stage, longest-aging active vehicle, damage and overdue-loaner counts, all filterable by Today/Week/Month/Quarter/Year or a custom date range. Built from the existing `stage_history` and `vehicles` data — no new tables needed. Stats computation is kept separate from rendering specifically so a future chart view can reuse it directly.
+- [x] Visible, always-on horizontal scrollbar for the board area — fixes desktop windows that aren't maximized having no obvious way to scroll
+- [x] Completed vehicles now sink to the bottom of their column instead of sitting wherever their position value happens to place them
+- [x] Stage history now shows duration down to the minute (e.g. "45 min", "3h 20m") instead of rounding to whole days, and timestamps include time-of-day
+- [x] Waiting on Title now uses the exact same aging color thresholds as every other stage — its extra leniency is gone
+- [x] Column headers are bolder and slightly larger so they stand out more
 - [x] Move a vehicle to any board, not just within the current one — the dropdown now groups every destination by board
 - [x] Self-service signup — invite a teammate by email, they create their own password and get auto-linked to your dealership (requires `supabase/invite_system_migration.sql`)
 - [x] Self-service password change — anyone logged in can change their own password, including accounts you created for them manually

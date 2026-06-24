@@ -40,12 +40,11 @@ function shortName(email: string | null): string {
   return email.split('@')[0];
 }
 
-// Waiting on Title typically takes longer than a normal recon stage, so it
-// gets a few extra days of leeway on top of whatever the dealership has set.
 // Inbound/Trade-In is time waiting on pickup or transit — largely out of the
 // dealership's control, so it shouldn't carry the same urgency colors as
 // stages the team actually controls. Returning null means "track the days,
-// but don't color-code it."
+// but don't color-code it." Every other stage, including Waiting on Title,
+// uses the same dealership-configured thresholds.
 function getThresholds(
   board: string,
   stage: string,
@@ -53,7 +52,6 @@ function getThresholds(
   redDays: number
 ): { yellow: number; red: number } | null {
   if (stage === 'inbound_trade_in') return null;
-  if (board === 'waiting_on_title') return { yellow: yellowDays + 2, red: redDays + 5 };
   return { yellow: yellowDays, red: redDays };
 }
 

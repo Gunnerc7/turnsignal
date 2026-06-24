@@ -6,9 +6,27 @@ import { BoardConfig, getBoard } from '../lib/boards';
 function durationLabel(enteredAt: string, exitedAt: string | null): string {
   const start = new Date(enteredAt).getTime();
   const end = exitedAt ? new Date(exitedAt).getTime() : Date.now();
-  const days = Math.max(0, Math.round((end - start) / (1000 * 60 * 60 * 24)));
-  if (days === 0) return 'Less than a day';
-  return days === 1 ? '1 day' : `${days} days`;
+  const totalMinutes = Math.max(0, Math.round((end - start) / 60000));
+
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+
+  const totalHours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  if (totalHours < 24) {
+    return remainingMinutes > 0 ? `${totalHours}h ${remainingMinutes}m` : `${totalHours}h`;
+  }
+
+  const days = Math.floor(totalHours / 24);
+  const remainingHours = totalHours % 24;
+  return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days} day${days === 1 ? '' : 's'}`;
+}
+
+function formatTimestamp(dateStr: string): string {
+  const date = new Date(dateStr);
+  return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${date.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  })}`;
 }
 
 export default function StageTimelineModal({
@@ -67,10 +85,8 @@ export default function StageTimelineModal({
                 <div>
                   <p className="text-sm font-medium text-ink">{labelFor(row.stage)}</p>
                   <p className="text-[11px] text-steel tabular">
-                    {new Date(row.entered_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                    {row.exited_at
-                      ? ` – ${new Date(row.exited_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}`
-                      : ' – now'}
+                    {formatTimestamp(row.entered_at)}
+                    {row.exited_at ? ` – ${formatTimestamp(row.exited_at)}` : ' – now'}
                   </p>
                 </div>
                 <span className="tabular text-sm font-display font-semibold text-steel whitespace-nowrap">
