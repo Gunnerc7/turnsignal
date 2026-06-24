@@ -39,6 +39,7 @@ export default function AddVehicleModal({
   const [trim, setTrim] = useState(vehicle?.trim ?? '');
   const [color, setColor] = useState(vehicle?.color ?? '');
   const [stockNumber, setStockNumber] = useState(vehicle?.stock_number ?? '');
+  const [hasDamage, setHasDamage] = useState(vehicle?.has_damage ?? false);
   const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : '');
   const [decoding, setDecoding] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -101,6 +102,7 @@ export default function AddVehicleModal({
       color: color.trim() || null,
       stock_number: stockNumber.trim() || null,
       mileage: mileage.trim() ? parseInt(mileage, 10) : null,
+      has_damage: hasDamage,
     };
 
     if (isEditing && vehicle) {
@@ -288,6 +290,16 @@ export default function AddVehicleModal({
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
             />
           </div>
+
+          <label className="flex items-center gap-2 py-1">
+            <input
+              type="checkbox"
+              checked={hasDamage}
+              onChange={(e) => setHasDamage(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <span className="text-sm font-medium text-ink">Has damage</span>
+          </label>
 
           {error && <p className="text-signal-red text-sm">{error}</p>}
 

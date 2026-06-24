@@ -24,6 +24,7 @@ export type Vehicle = {
   completed_by_email: string | null;
   created_by_name: string | null;
   completed_by_name: string | null;
+  has_damage: boolean;
 };
 
 export type VehicleNote = {

@@ -8,6 +8,7 @@ import { BoardConfig } from '../lib/boards';
 import NotesModal from './NotesModal';
 import StageTimelineModal from './StageTimelineModal';
 import AddVehicleModal from './AddVehicleModal';
+import PhotosModal from './PhotosModal';
 
 function daysSince(dateStr: string): number {
   const entered = new Date(dateStr);
@@ -90,6 +91,7 @@ export default function VehicleCard({
   const [notesOpen, setNotesOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [photosOpen, setPhotosOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   // Once recon_started_at is set (the moment a vehicle first leaves Inbound),
   // the badge shows total time across every stage since then — it never
@@ -228,7 +230,8 @@ export default function VehicleCard({
 
         <div className="flex-1 flex items-start justify-between gap-2">
           <p
-            className={`font-display leading-tight ${
+            onClick={() => setEditOpen(true)}
+            className={`font-display leading-tight cursor-pointer ${
               vehicle.completed ? 'text-steel line-through' : 'text-ink'
             }`}
           >
@@ -248,7 +251,13 @@ export default function VehicleCard({
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-steel space-y-0.5 pl-7">
+      {vehicle.has_damage && (
+        <p className="mt-1.5 pl-7 inline-flex items-center gap-1 text-xs font-bold text-signal-red">
+          ⚠ DAMAGE
+        </p>
+      )}
+
+      <div onClick={() => setEditOpen(true)} className="mt-2 text-xs text-steel space-y-0.5 pl-7 cursor-pointer">
         {vehicle.color && <p>{vehicle.color}</p>}
         {vehicle.vin && <p className="truncate tabular">VIN: {vehicle.vin}</p>}
         {vehicle.mileage != null && <p className="tabular">{vehicle.mileage.toLocaleString()} mi</p>}
@@ -283,18 +292,14 @@ export default function VehicleCard({
         </button>
 
         <button
-          onClick={() => setEditOpen(true)}
-          aria-label="Edit vehicle details"
+          onClick={() => setPhotosOpen(true)}
+          aria-label="View photos"
           className="bg-gray-50 rounded-md px-2.5 text-steel"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M11.5 2.5l2 2L5 13l-3 1 1-3 8.5-8.5z"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <rect x="1.5" y="3.5" width="13" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+            <circle cx="5.5" cy="7" r="1.2" stroke="currentColor" strokeWidth="1.1" />
+            <path d="M2 12l3.5-3 2.5 2 2.5-3 3.5 4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
       </div>
@@ -346,6 +351,15 @@ export default function VehicleCard({
           board={vehicle.board}
           boards={boards}
           onClose={() => setTimelineOpen(false)}
+        />
+      )}
+
+      {photosOpen && (
+        <PhotosModal
+          vehicleId={vehicle.id}
+          dealershipId={vehicle.dealership_id}
+          vehicleLabel={vehicleLabel}
+          onClose={() => setPhotosOpen(false)}
         />
       )}
 

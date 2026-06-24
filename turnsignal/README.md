@@ -58,6 +58,11 @@ That starts it at http://localhost:5173
 - [x] Edit or delete any note after the fact — no more being stuck with a typo or a note on the wrong vehicle
 - [x] First and last names — collected at signup, editable anytime via the new "Name" button. Notes, added-by, and completed-by all show the real name once it's set, falling back to the old email-based short name for anyone who hasn't set one yet.
 - [x] Dealership roles — Manager, Sales, Service, Detail, Photo (requires `supabase/dealership_roles_migration.sql`). Owner can designate the first Manager for any dealership via the new "👤 Roles" button; once someone is a Manager, they can assign roles to others in their own dealership too — including at invite time. Roles are optional and don't restrict access yet (that's planned for later); right now they're just labels.
+- [x] Notes modal auto-closes after adding a note instead of requiring a manual Close
+- [x] Click anywhere on a card's title or details to edit it — the separate pencil button is gone
+- [x] Board scroll resets to the start every time you switch tabs, instead of staying wherever it was left
+- [x] Photos on each card — tap the photo icon next to Notes to view, add, or delete photos (requires `supabase/photos_and_damage_migration.sql`, sets up Supabase Storage for the first time)
+- [x] Damage flag — a checkbox in the add/edit form; when checked, a bold "⚠ DAMAGE" badge shows directly on the card. Honest note: this is a visible on-board alert, not a push/email notification to a manager's phone — that's bigger infrastructure tied to the notifications system already on the roadmap.
 - [x] Move a vehicle to any board, not just within the current one — the dropdown now groups every destination by board
 - [x] Self-service signup — invite a teammate by email, they create their own password and get auto-linked to your dealership (requires `supabase/invite_system_migration.sql`)
 - [x] Self-service password change — anyone logged in can change their own password, including accounts you created for them manually

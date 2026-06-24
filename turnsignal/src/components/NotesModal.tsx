@@ -62,10 +62,9 @@ export default function NotesModal({
       author_email: session?.user.email ?? null,
       author_name: userName,
     });
-    setDraft('');
     setSaving(false);
-    await loadNotes();
     onChanged();
+    onClose();
   }
 
   async function handleSaveEdit(noteId: string) {

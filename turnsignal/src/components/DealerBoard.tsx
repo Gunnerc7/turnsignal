@@ -53,6 +53,7 @@ export default function DealerBoard({
   // to know whether a real stage change happened (and stage history needs
   // updating), separate from whatever it's been previewed into mid-drag.
   const dragOriginStage = useRef<string | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement>(null);
 
   // A small activation distance means a normal tap (e.g. opening the dropdown)
   // doesn't accidentally start a drag — only a deliberate press-and-move does.
@@ -105,6 +106,13 @@ export default function DealerBoard({
       setActiveBoardKey(boards[0].key);
     }
   }, [boards, activeBoardKey]);
+
+  // Without this, switching tabs (or just opening the board) can leave you
+  // scrolled wherever the previous board happened to be, instead of always
+  // starting at the first column.
+  useEffect(() => {
+    boardScrollRef.current?.scrollTo({ left: 0 });
+  }, [activeBoardKey]);
 
   function handleDragStart(event: DragStartEvent) {
     const vehicle = vehicles.find((v) => v.id === event.active.id);
@@ -220,7 +228,7 @@ export default function DealerBoard({
 
       {activeBoard && (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-          <main className="flex-1 overflow-x-auto p-4">
+          <main ref={boardScrollRef} className="flex-1 overflow-x-auto p-4">
             <div className="snap-row flex gap-4 h-full">
               {activeBoard.stages.map((stage) => (
                 <KanbanColumn
