@@ -167,14 +167,14 @@ export default function AnalyticsPage({
     }
 
     // Bottleneck — whichever stage has the highest average duration.
-    let bottleneck: { board: string; stage: string; avgDays: number } | null = null;
-    stageDurations.forEach((arr, key) => {
-      const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
-      if (!bottleneck || avg > bottleneck.avgDays) {
-        const [board, stage] = key.split('::');
-        bottleneck = { board, stage, avgDays: avg };
-      }
-    });
+    const bottleneck =
+      Array.from(stageDurations.entries())
+        .map(([key, arr]) => {
+          const [board, stage] = key.split('::');
+          const avgDays = arr.reduce((a, b) => a + b, 0) / arr.length;
+          return { board, stage, avgDays };
+        })
+        .sort((a, b) => b.avgDays - a.avgDays)[0] ?? null;
 
     // Turn time: Inbound → Price for Lot, for vehicles that reached it in range.
     const turnTimes: number[] = [];
@@ -191,15 +191,15 @@ export default function AnalyticsPage({
     const slowestTurn = turnTimes.length ? Math.max(...turnTimes) : null;
 
     // Longest-aging vehicle still active (not completed) right now.
-    let longestAging: { label: string; days: number } | null = null;
-    vehicles.forEach((v) => {
-      if (v.completed) return;
-      const anchor = v.recon_started_at ?? v.stage_entered_at;
-      const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
-      if (!longestAging || days > longestAging.days) {
-        longestAging = { label: vehicleLabel(v), days };
-      }
-    });
+    const longestAging =
+      vehicles
+        .filter((v) => !v.completed)
+        .map((v) => {
+          const anchor = v.recon_started_at ?? v.stage_entered_at;
+          const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
+          return { label: vehicleLabel(v), days };
+        })
+        .sort((a, b) => b.days - a.days)[0] ?? null;
 
     const damagedCount = vehicles.filter((v) => v.has_damage).length;
     const overdueLoaners = vehicles.filter(
