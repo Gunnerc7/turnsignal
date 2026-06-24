@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import DealerBoard from '../components/DealerBoard';
 import DealershipPicker from '../components/DealershipPicker';
+import GroupStorePicker from '../components/GroupStorePicker';
 import InviteTeammateModal from '../components/InviteTeammateModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import EditNameModal from '../components/EditNameModal';
@@ -16,11 +17,13 @@ export default function Dashboard() {
   const [dealershipName, setDealershipName] = useState<string>('Your dealership');
   const [dealershipActive, setDealershipActive] = useState(true);
   const [viewingAsOwner, setViewingAsOwner] = useState<ViewingDealership | null>(null);
+  const [viewingAsManager, setViewingAsManager] = useState<ViewingDealership | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [nameOpen, setNameOpen] = useState(false);
+  const [storePickerOpen, setStorePickerOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!session) return;
@@ -72,15 +75,23 @@ export default function Dashboard() {
   const isOwner = profile.role === 'owner';
   const isManager = profile.dealership_role === 'manager';
   const canAssignRoles = isOwner || isManager;
+
+  // A Manager only keeps Manager privileges (Roles button, etc.) on their
+  // own home store — viewing a sibling store in the group is full access,
+  // but not "I manage this one" access.
+  const viewingSiblingStore = isManager && viewingAsManager && viewingAsManager.id !== profile.dealership_id;
+  const effectiveIsManager = isManager && !viewingSiblingStore;
+  const effectiveDealershipId = viewingAsManager ? viewingAsManager.id : profile.dealership_id;
+  const effectiveDealershipName = viewingAsManager ? viewingAsManager.name : dealershipName;
+
   const headerLabel = isOwner
     ? viewingAsOwner
       ? `Owner Mode — ${viewingAsOwner.name}`
       : 'Owner Mode'
-    : dealershipName;
+    : effectiveDealershipName;
 
-  // The dealership currently being viewed, regardless of whether you're a
-  // regular dealer or an Owner peeking into one — used for invites.
-  const currentDealershipId = isOwner ? viewingAsOwner?.id : profile.dealership_id;
+  // The dealership currently being viewed, regardless of role — used for invites.
+  const currentDealershipId = isOwner ? viewingAsOwner?.id : effectiveDealershipId;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -106,6 +117,16 @@ export default function Dashboard() {
           <button onClick={() => setPasswordOpen(true)} className="text-sm text-steel hover:text-white py-2">
             Password
           </button>
+          {isManager && (
+            <button onClick={() => setStorePickerOpen(true)} className="text-sm text-steel hover:text-white py-2">
+              🏢 Switch store
+            </button>
+          )}
+          {viewingSiblingStore && (
+            <button onClick={() => setViewingAsManager(null)} className="text-sm text-steel hover:text-white py-2">
+              ← My store
+            </button>
+          )}
           {isOwner && viewingAsOwner && (
             <button onClick={() => setViewingAsOwner(null)} className="text-sm text-steel hover:text-white py-2">
               ← Dealer list
@@ -130,8 +151,8 @@ export default function Dashboard() {
             This dealership's access has been paused. Contact your TurnSignal administrator for details.
           </p>
         </div>
-      ) : profile.dealership_id ? (
-        <DealerBoard dealershipId={profile.dealership_id} isOwner={false} isManager={isManager} />
+      ) : effectiveDealershipId ? (
+        <DealerBoard dealershipId={effectiveDealershipId} isOwner={false} isManager={effectiveIsManager} />
       ) : (
         <p className="p-4 text-signal-red text-sm">
           This account isn't linked to a dealership yet.
@@ -149,6 +170,16 @@ export default function Dashboard() {
       {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}
 
       {nameOpen && <EditNameModal onClose={() => setNameOpen(false)} />}
+
+      {storePickerOpen && (
+        <GroupStorePicker
+          onSelect={(store) => {
+            setViewingAsManager(store);
+            setStorePickerOpen(false);
+          }}
+          onClose={() => setStorePickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
