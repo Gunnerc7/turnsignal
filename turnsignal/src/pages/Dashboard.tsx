@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext';
 import DealerBoard from '../components/DealerBoard';
 import DealershipPicker from '../components/DealershipPicker';
 import GroupStorePicker from '../components/GroupStorePicker';
+import AnalyticsPage from '../components/AnalyticsPage';
 import InviteTeammateModal from '../components/InviteTeammateModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import EditNameModal from '../components/EditNameModal';
@@ -25,6 +26,7 @@ export default function Dashboard() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [nameOpen, setNameOpen] = useState(false);
   const [storePickerOpen, setStorePickerOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!session) return;
@@ -100,6 +102,8 @@ export default function Dashboard() {
 
   // The dealership currently being viewed, regardless of role — used for invites.
   const currentDealershipId = isOwner ? viewingAsOwner?.id : effectiveDealershipId;
+  const currentDealershipName = isOwner ? viewingAsOwner?.name ?? null : effectiveDealershipName;
+  const canViewAnalytics = (isOwner || isManager) && Boolean(currentDealershipId);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -112,6 +116,14 @@ export default function Dashboard() {
             </p>
             <h1 className="font-display text-lg font-semibold leading-tight">{headerLabel}</h1>
           </div>
+          {canViewAnalytics && (
+            <button
+              onClick={() => setAnalyticsOpen(true)}
+              className="ml-2 text-xs font-semibold bg-signal-blue text-white rounded-full px-3 py-1.5 whitespace-nowrap"
+            >
+              📊 Analytics
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {currentDealershipId && (
@@ -191,6 +203,14 @@ export default function Dashboard() {
             setStorePickerOpen(false);
           }}
           onClose={() => setStorePickerOpen(false)}
+        />
+      )}
+
+      {analyticsOpen && currentDealershipId && (
+        <AnalyticsPage
+          dealershipId={currentDealershipId}
+          dealershipName={currentDealershipName ?? 'Dealership'}
+          onClose={() => setAnalyticsOpen(false)}
         />
       )}
     </div>
