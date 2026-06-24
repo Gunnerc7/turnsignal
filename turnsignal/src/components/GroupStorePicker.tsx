@@ -4,9 +4,11 @@ import { supabase } from '../lib/supabase';
 type Store = { id: string; name: string };
 
 export default function GroupStorePicker({
+  groupId,
   onSelect,
   onClose,
 }: {
+  groupId: string;
   onSelect: (store: Store) => void;
   onClose: () => void;
 }) {
@@ -17,12 +19,13 @@ export default function GroupStorePicker({
     supabase
       .from('dealerships')
       .select('id, name')
+      .eq('group_id', groupId)
       .order('name', { ascending: true })
       .then(({ data }) => {
         setStores(data ?? []);
         setLoading(false);
       });
-  }, []);
+  }, [groupId]);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">

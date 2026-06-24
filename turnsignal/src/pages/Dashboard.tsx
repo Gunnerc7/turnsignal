@@ -9,13 +9,14 @@ import ChangePasswordModal from '../components/ChangePasswordModal';
 import EditNameModal from '../components/EditNameModal';
 
 type Profile = { dealership_id: string | null; role: string; dealership_role: string | null };
-type ViewingDealership = { id: string; name: string };
+type ViewingDealership = { id: string; name: string; group_id?: string | null };
 
 export default function Dashboard() {
   const { session } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [dealershipName, setDealershipName] = useState<string>('Your dealership');
   const [dealershipActive, setDealershipActive] = useState(true);
+  const [dealershipGroupId, setDealershipGroupId] = useState<string | null>(null);
   const [viewingAsOwner, setViewingAsOwner] = useState<ViewingDealership | null>(null);
   const [viewingAsManager, setViewingAsManager] = useState<ViewingDealership | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,11 +47,12 @@ export default function Dashboard() {
     if (data.role !== 'owner' && data.dealership_id) {
       const { data: dealership } = await supabase
         .from('dealerships')
-        .select('name, active')
+        .select('name, active, group_id')
         .eq('id', data.dealership_id)
         .single();
       setDealershipName(dealership?.name ?? 'Your dealership');
       setDealershipActive(dealership?.active ?? true);
+      setDealershipGroupId(dealership?.group_id ?? null);
     }
 
     setLoading(false);
@@ -90,6 +92,12 @@ export default function Dashboard() {
       : 'Owner Mode'
     : effectiveDealershipName;
 
+  // The group this is relevant to, regardless of whether you're an Owner
+  // peeking at a dealership or a Manager on your own store — Owner's login
+  // always gets at least whatever a Manager would see here, plus more.
+  const relevantGroupId = isOwner ? viewingAsOwner?.group_id ?? null : dealershipGroupId;
+  const showStoreSwitcher = Boolean(relevantGroupId) && (isOwner ? Boolean(viewingAsOwner) : isManager);
+
   // The dealership currently being viewed, regardless of role — used for invites.
   const currentDealershipId = isOwner ? viewingAsOwner?.id : effectiveDealershipId;
 
@@ -117,7 +125,7 @@ export default function Dashboard() {
           <button onClick={() => setPasswordOpen(true)} className="text-sm text-steel hover:text-white py-2">
             Password
           </button>
-          {isManager && (
+          {showStoreSwitcher && (
             <button onClick={() => setStorePickerOpen(true)} className="text-sm text-steel hover:text-white py-2">
               🏢 Switch store
             </button>
@@ -171,10 +179,15 @@ export default function Dashboard() {
 
       {nameOpen && <EditNameModal onClose={() => setNameOpen(false)} />}
 
-      {storePickerOpen && (
+      {storePickerOpen && relevantGroupId && (
         <GroupStorePicker
+          groupId={relevantGroupId}
           onSelect={(store) => {
-            setViewingAsManager(store);
+            if (isOwner) {
+              setViewingAsOwner({ ...store, group_id: relevantGroupId });
+            } else {
+              setViewingAsManager(store);
+            }
             setStorePickerOpen(false);
           }}
           onClose={() => setStorePickerOpen(false)}
