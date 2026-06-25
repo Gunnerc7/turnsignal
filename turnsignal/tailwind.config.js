@@ -10,6 +10,7 @@ export default {
       colors: {
         ink: '#14171F',
         steel: '#3A4150',
+        mist: '#B8BFCC',
         asphalt: '#EDEFF2',
         signal: {
           blue: '#2D5BFF',

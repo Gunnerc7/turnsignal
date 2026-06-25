@@ -27,6 +27,7 @@ export default function Dashboard() {
   const [nameOpen, setNameOpen] = useState(false);
   const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!session) return;
@@ -107,11 +108,11 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="bg-ink text-white px-4 py-3.5 flex items-center justify-between">
+      <header className="bg-ink text-white px-4 py-3.5 flex items-center justify-between flex-wrap gap-y-2">
         <div className="flex items-center gap-2.5">
           <span className="w-2 h-2 rounded-full bg-signal-amber shadow-glowAmber" aria-hidden="true" />
           <div>
-            <p className="text-[11px] text-steel uppercase tracking-wider leading-none">
+            <p className="text-[11px] text-mist uppercase tracking-wider leading-none">
               {isOwner ? 'Owner' : 'Dealership'}
             </p>
             <h1 className="font-display text-lg font-semibold leading-tight">{headerLabel}</h1>
@@ -126,35 +127,88 @@ export default function Dashboard() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          {currentDealershipId && (
-            <button onClick={() => setInviteOpen(true)} className="text-sm text-steel hover:text-white py-2">
-              Invite
-            </button>
-          )}
-          <button onClick={() => setNameOpen(true)} className="text-sm text-steel hover:text-white py-2">
-            Name
-          </button>
-          <button onClick={() => setPasswordOpen(true)} className="text-sm text-steel hover:text-white py-2">
-            Password
-          </button>
           {showStoreSwitcher && (
-            <button onClick={() => setStorePickerOpen(true)} className="text-sm text-steel hover:text-white py-2">
+            <button onClick={() => setStorePickerOpen(true)} className="text-sm text-mist hover:text-white py-2 whitespace-nowrap">
               🏢 Switch store
             </button>
           )}
-          {viewingSiblingStore && (
-            <button onClick={() => setViewingAsManager(null)} className="text-sm text-steel hover:text-white py-2">
-              ← My store
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-label="More options"
+              className="text-mist hover:text-white py-2 px-1 text-lg leading-none"
+            >
+              ⋯
             </button>
-          )}
-          {isOwner && viewingAsOwner && (
-            <button onClick={() => setViewingAsOwner(null)} className="text-sm text-steel hover:text-white py-2">
-              ← Dealer list
-            </button>
-          )}
-          <button onClick={() => supabase.auth.signOut()} className="text-sm text-steel hover:text-white py-2">
-            Sign out
-          </button>
+            {menuOpen && (
+              <>
+                <button
+                  className="fixed inset-0 z-40 cursor-default"
+                  aria-label="Close menu"
+                  onClick={() => setMenuOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lift border border-gray-200 py-1 w-44 z-50">
+                  {currentDealershipId && (
+                    <button
+                      onClick={() => {
+                        setInviteOpen(true);
+                        setMenuOpen(false);
+                      }}
+                      className="w-full text-left text-sm text-ink px-3 py-2.5 hover:bg-asphalt"
+                    >
+                      Invite
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setNameOpen(true);
+                      setMenuOpen(false);
+                    }}
+                    className="w-full text-left text-sm text-ink px-3 py-2.5 hover:bg-asphalt"
+                  >
+                    Name
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPasswordOpen(true);
+                      setMenuOpen(false);
+                    }}
+                    className="w-full text-left text-sm text-ink px-3 py-2.5 hover:bg-asphalt"
+                  >
+                    Password
+                  </button>
+                  {viewingSiblingStore && (
+                    <button
+                      onClick={() => {
+                        setViewingAsManager(null);
+                        setMenuOpen(false);
+                      }}
+                      className="w-full text-left text-sm text-ink px-3 py-2.5 hover:bg-asphalt"
+                    >
+                      ← My store
+                    </button>
+                  )}
+                  {isOwner && viewingAsOwner && (
+                    <button
+                      onClick={() => {
+                        setViewingAsOwner(null);
+                        setMenuOpen(false);
+                      }}
+                      className="w-full text-left text-sm text-ink px-3 py-2.5 hover:bg-asphalt"
+                    >
+                      ← Dealer list
+                    </button>
+                  )}
+                  <button
+                    onClick={() => supabase.auth.signOut()}
+                    className="w-full text-left text-sm text-signal-red px-3 py-2.5 hover:bg-asphalt"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 

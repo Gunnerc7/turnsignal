@@ -72,6 +72,8 @@ That starts it at http://localhost:5173
 - [x] Stage history now shows duration down to the minute (e.g. "45 min", "3h 20m") instead of rounding to whole days, and timestamps include time-of-day
 - [x] Waiting on Title now uses the exact same aging color thresholds as every other stage — its extra leniency is gone
 - [x] Column headers are bolder and slightly larger so they stand out more
+- [x] Header no longer overflows/freezes on phones — collapsed Invite/Name/Password/Dealer-list/Sign-out into a "⋯" dropdown menu, kept Switch Store and Analytics exactly where they were, and made the header wrap instead of ever pushing the page wider than the screen
+- [x] Brightened low-contrast light-gray text on dark backgrounds (header captions/buttons, Analytics page header and headline card) — added a proper `mist` color specifically for this, since `steel` was too close to the dark background it sat on
 - [x] Move a vehicle to any board, not just within the current one — the dropdown now groups every destination by board
 - [x] Self-service signup — invite a teammate by email, they create their own password and get auto-linked to your dealership (requires `supabase/invite_system_migration.sql`)
 - [x] Self-service password change — anyone logged in can change their own password, including accounts you created for them manually

@@ -233,10 +233,10 @@ export default function AnalyticsPage({
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
       <div className="flex items-center justify-between px-4 py-3.5 bg-ink text-white flex-shrink-0">
         <div>
-          <p className="text-[11px] text-steel uppercase tracking-wider leading-none">Analytics</p>
+          <p className="text-[11px] text-mist uppercase tracking-wider leading-none">Analytics</p>
           <h1 className="font-display text-lg font-semibold leading-tight">{dealershipName}</h1>
         </div>
-        <button onClick={onClose} className="text-sm text-steel hover:text-white py-2">
+        <button onClick={onClose} className="text-sm text-mist hover:text-white py-2">
           Close
         </button>
       </div>
@@ -278,9 +278,9 @@ export default function AnalyticsPage({
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           <div className="bg-ink rounded-xl p-5 text-white">
-            <p className="text-xs text-steel uppercase tracking-wide mb-1">Avg. Inbound → Price for Lot</p>
+            <p className="text-xs text-mist uppercase tracking-wide mb-1">Avg. Inbound → Price for Lot</p>
             <p className="font-display text-3xl font-bold">{formatDays(stats.avgTurnTime)}</p>
-            <div className="flex gap-4 mt-2 text-xs text-steel">
+            <div className="flex gap-4 mt-2 text-xs text-mist">
               <span>Fastest: {formatDays(stats.fastestTurn)}</span>
               <span>Slowest: {formatDays(stats.slowestTurn)}</span>
             </div>
