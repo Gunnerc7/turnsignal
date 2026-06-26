@@ -185,9 +185,12 @@ export default function AnalyticsPage({
     // all moving through quickly does NOT count as a bottleneck by this
     // measure, even though its raw count is high. Inbound is excluded,
     // same reasoning as the aging colors — that wait isn't on the dealership.
+    // Restricted to the Main Board only — Loaners and similar boards have
+    // naturally long stays (e.g. ~30 days for a service loaner) that aren't
+    // a recon bottleneck, just how that board normally works.
     const currentBacklog = new Map<string, { count: number; totalDays: number }>();
     vehicles.forEach((v) => {
-      if (v.completed || v.stage === 'inbound_trade_in') return;
+      if (v.completed || v.stage === 'inbound_trade_in' || v.board !== 'main') return;
       const key = `${v.board}::${v.stage}`;
       const days = (Date.now() - new Date(v.stage_entered_at).getTime()) / 86400000;
       const entry = currentBacklog.get(key) ?? { count: 0, totalDays: 0 };
