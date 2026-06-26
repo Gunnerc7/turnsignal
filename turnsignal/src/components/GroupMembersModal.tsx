@@ -9,6 +9,8 @@ export default function GroupMembersModal({
   onToggleActive,
   onDelete,
   onGroupAssign,
+  onRenameGroup,
+  onRenameDealership,
 }: {
   group: Group;
   members: Dealership[];
@@ -18,13 +20,23 @@ export default function GroupMembersModal({
   onToggleActive: (d: Dealership) => void;
   onDelete: (d: Dealership) => void;
   onGroupAssign: (d: Dealership, groupId: string) => void;
+  onRenameGroup: (group: Group, newName: string) => void;
+  onRenameDealership: (d: Dealership, newName: string) => void;
 }) {
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h2 className="font-display text-lg font-semibold text-ink">{group.name}</h2>
-          <button onClick={onClose} className="text-steel text-sm py-2">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 gap-2">
+          <input
+            defaultValue={group.name}
+            onBlur={(e) => {
+              if (e.target.value.trim() && e.target.value.trim() !== group.name) {
+                onRenameGroup(group, e.target.value.trim());
+              }
+            }}
+            className="font-display text-lg font-semibold text-ink flex-1 border border-transparent hover:border-gray-300 focus:border-signal-blue rounded px-1 -mx-1"
+          />
+          <button onClick={onClose} className="text-steel text-sm py-2 flex-shrink-0">
             Close
           </button>
         </div>
@@ -35,14 +47,25 @@ export default function GroupMembersModal({
           ) : (
             members.map((d) => (
               <div key={d.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
-                <button onClick={() => onSelect(d)} className="w-full text-left font-medium text-ink mb-2">
-                  {d.name}
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    defaultValue={d.name}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() && e.target.value.trim() !== d.name) {
+                        onRenameDealership(d, e.target.value.trim());
+                      }
+                    }}
+                    className="flex-1 font-medium text-ink border border-transparent hover:border-gray-300 focus:border-signal-blue rounded px-1 -mx-1"
+                  />
                   {!d.active && (
-                    <span className="ml-2 text-[10px] uppercase tracking-wide bg-gray-200 text-steel rounded-full px-2 py-0.5">
+                    <span className="text-[10px] uppercase tracking-wide bg-gray-200 text-steel rounded-full px-2 py-0.5 flex-shrink-0">
                       Paused
                     </span>
                   )}
-                </button>
+                  <button onClick={() => onSelect(d)} className="text-signal-blue text-sm font-medium flex-shrink-0">
+                    View board →
+                  </button>
+                </div>
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex gap-3 text-sm">
                     <button onClick={() => onToggleActive(d)} className="text-steel font-medium">

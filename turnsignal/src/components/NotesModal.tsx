@@ -161,6 +161,7 @@ export default function NotesModal({
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)}
             placeholder="Add a note…"
             rows={2}
             className="w-full text-sm border border-gray-300 rounded-lg py-2 px-3 resize-none focus:outline-none focus:ring-2 focus:ring-signal-blue"

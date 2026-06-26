@@ -48,6 +48,15 @@ export default function AddVehicleModal({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // iOS Safari's on-screen keyboard can resize the viewport in a way that
+  // leaves the field you're typing into hidden behind it. Nudging the
+  // focused field into view once the keyboard finishes animating in works
+  // around this — it's a real platform quirk, not something we can fully
+  // fix from CSS alone.
+  function scrollFieldIntoView(e: React.FocusEvent<HTMLElement>) {
+    setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+  }
+
   useEffect(() => {
     if (autoScan) setCameraOpen(true);
   }, [autoScan]);
@@ -177,6 +186,7 @@ export default function AddVehicleModal({
               <input
                 value={vin}
                 onChange={(e) => setVin(e.target.value)}
+                onFocus={scrollFieldIntoView}
                 className="flex-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base"
                 placeholder="17-character VIN"
                 maxLength={17}
@@ -229,6 +239,7 @@ export default function AddVehicleModal({
             <input
               value={stockNumber}
               onChange={(e) => setStockNumber(e.target.value)}
+              onFocus={scrollFieldIntoView}
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
             />
           </div>
@@ -239,6 +250,7 @@ export default function AddVehicleModal({
               <input
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
+                onFocus={scrollFieldIntoView}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
               />
             </div>
@@ -247,6 +259,7 @@ export default function AddVehicleModal({
               <input
                 value={make}
                 onChange={(e) => setMake(e.target.value)}
+                onFocus={scrollFieldIntoView}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
               />
             </div>
@@ -258,6 +271,7 @@ export default function AddVehicleModal({
               <input
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
+                onFocus={scrollFieldIntoView}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
               />
             </div>
@@ -266,6 +280,7 @@ export default function AddVehicleModal({
               <input
                 value={trim}
                 onChange={(e) => setTrim(e.target.value)}
+                onFocus={scrollFieldIntoView}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
               />
             </div>
@@ -276,6 +291,7 @@ export default function AddVehicleModal({
             <input
               value={color}
               onChange={(e) => setColor(e.target.value)}
+              onFocus={scrollFieldIntoView}
               placeholder="e.g. Summit White"
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
             />
@@ -287,6 +303,7 @@ export default function AddVehicleModal({
               type="number"
               value={mileage}
               onChange={(e) => setMileage(e.target.value)}
+              onFocus={scrollFieldIntoView}
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
             />
           </div>

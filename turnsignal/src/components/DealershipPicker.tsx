@@ -88,6 +88,16 @@ export default function DealershipPicker({
     loadDealerships();
   }
 
+  async function handleRenameDealership(dealership: Dealership, newName: string) {
+    await supabase.from('dealerships').update({ name: newName }).eq('id', dealership.id);
+    loadDealerships();
+  }
+
+  async function handleRenameGroup(group: Group, newName: string) {
+    await supabase.from('dealership_groups').update({ name: newName }).eq('id', group.id);
+    loadGroups();
+  }
+
   async function toggleActive(dealership: Dealership) {
     await supabase.from('dealerships').update({ active: !dealership.active }).eq('id', dealership.id);
     loadDealerships();
@@ -96,9 +106,20 @@ export default function DealershipPicker({
   function renderStandaloneRow(d: Dealership) {
     return (
       <div key={d.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
-        <button onClick={() => onSelect(d)} className="w-full text-left font-medium text-ink mb-2">
-          {d.name}
-        </button>
+        <div className="flex items-center gap-2 mb-2">
+          <input
+            defaultValue={d.name}
+            onBlur={(e) => {
+              if (e.target.value.trim() && e.target.value.trim() !== d.name) {
+                handleRenameDealership(d, e.target.value.trim());
+              }
+            }}
+            className="flex-1 font-medium text-ink border border-transparent hover:border-gray-300 focus:border-signal-blue rounded px-1 -mx-1"
+          />
+          <button onClick={() => onSelect(d)} className="text-signal-blue text-sm font-medium flex-shrink-0">
+            View board →
+          </button>
+        </div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex gap-3 text-sm">
             <button onClick={() => toggleActive(d)} className="text-steel font-medium">
@@ -240,6 +261,11 @@ export default function DealershipPicker({
             setOpenGroup(null);
           }}
           onGroupAssign={handleGroupAssign}
+          onRenameGroup={(g, newName) => {
+            handleRenameGroup(g, newName);
+            setOpenGroup({ ...g, name: newName });
+          }}
+          onRenameDealership={handleRenameDealership}
         />
       )}
 

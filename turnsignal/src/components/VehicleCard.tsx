@@ -131,7 +131,7 @@ export default function VehicleCard({
   const latestNote = notes[0];
 
   // Completed vehicles collapse down to a single slim row, Planner-style —
-  // tap the name to peek at full details again without un-completing it.
+  // tap anywhere on the row to pop it back open without un-completing it.
   if (vehicle.completed && !expanded) {
     return (
       <div
@@ -141,7 +141,7 @@ export default function VehicleCard({
           transition,
           opacity: isDragging ? 0.3 : 0.6,
         }}
-        className="relative bg-white rounded-xl shadow-sm border border-gray-200 mb-2 pl-5 flex items-center gap-2 px-3 py-2
+        className="relative bg-white rounded-xl shadow-sm border border-gray-200 mb-2 pl-5 flex items-center gap-1 px-3 py-2
           before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-xl before:bg-signal-green"
       >
         <button
@@ -154,16 +154,22 @@ export default function VehicleCard({
             <path d="M3 8.5L6.5 12L13 4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <button onClick={() => setExpanded(true)} className="flex-1 text-left text-sm text-steel line-through truncate">
-          {vehicle.stock_number && <span className="font-semibold not-italic">{vehicle.stock_number}-</span>}
-          {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
-          {vehicle.trim ? ` ${vehicle.trim}` : ''}
-        </button>
-        {(vehicle.completed_by_name || vehicle.completed_by_email) && (
-          <span className="text-[10px] text-steel whitespace-nowrap">
-            {vehicle.completed_by_name ?? shortName(vehicle.completed_by_email)}
+        <button
+          onClick={() => setExpanded(true)}
+          className="flex-1 flex items-center gap-1 text-left text-sm text-steel py-1 min-w-0"
+        >
+          <span className="line-through truncate">
+            {vehicle.stock_number && <span className="font-semibold not-italic">{vehicle.stock_number}-</span>}
+            {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
+            {vehicle.trim ? ` ${vehicle.trim}` : ''}
           </span>
-        )}
+          {(vehicle.completed_by_name || vehicle.completed_by_email) && (
+            <span className="text-[10px] text-gray-400 whitespace-nowrap flex-shrink-0">
+              {vehicle.completed_by_name ?? shortName(vehicle.completed_by_email)}
+            </span>
+          )}
+          <span className="text-gray-400 flex-shrink-0">›</span>
+        </button>
       </div>
     );
   }
@@ -196,6 +202,16 @@ export default function VehicleCard({
             <circle cx="9" cy="14" r="1.5" />
           </svg>
         </div>
+      )}
+
+      {vehicle.completed && (
+        <button
+          onClick={() => setExpanded(false)}
+          aria-label="Collapse"
+          className="absolute top-1 right-1 w-9 h-9 flex items-center justify-center text-gray-300 hover:text-gray-400 active:scale-90 transition text-lg"
+        >
+          ‹
+        </button>
       )}
 
       <div className="flex items-start gap-2 pr-7">
