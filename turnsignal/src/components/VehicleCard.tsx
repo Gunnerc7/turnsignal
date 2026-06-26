@@ -5,6 +5,7 @@ import { Vehicle, VehicleNote } from '../lib/types';
 import { moveVehicleToStage } from '../lib/moveVehicle';
 import { supabase } from '../lib/supabase';
 import { BoardConfig } from '../lib/boards';
+import { getThresholds } from '../lib/aging';
 import NotesModal from './NotesModal';
 import StageTimelineModal from './StageTimelineModal';
 import AddVehicleModal from './AddVehicleModal';
@@ -38,21 +39,6 @@ function formatNoteDate(dateStr: string): string {
 function shortName(email: string | null): string {
   if (!email) return 'Someone';
   return email.split('@')[0];
-}
-
-// Inbound/Trade-In is time waiting on pickup or transit — largely out of the
-// dealership's control, so it shouldn't carry the same urgency colors as
-// stages the team actually controls. Returning null means "track the days,
-// but don't color-code it." Every other stage, including Waiting on Title,
-// uses the same dealership-configured thresholds.
-function getThresholds(
-  board: string,
-  stage: string,
-  yellowDays: number,
-  redDays: number
-): { yellow: number; red: number } | null {
-  if (stage === 'inbound_trade_in') return null;
-  return { yellow: yellowDays, red: redDays };
 }
 
 function ageStripe(days: number, thresholds: { yellow: number; red: number } | null) {
@@ -96,7 +82,7 @@ export default function VehicleCard({
   // resets on a stage move. Still in Inbound with no anchor yet? Fall back
   // to the neutral per-stage count from getThresholds returning null.
   const days = daysSince(vehicle.recon_started_at ?? vehicle.stage_entered_at);
-  const thresholds = getThresholds(vehicle.board, vehicle.stage, yellowDays, redDays);
+  const thresholds = getThresholds(vehicle.stage, yellowDays, redDays);
   const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
   const vehicleLabel = `${vehicle.stock_number ? vehicle.stock_number + '-' : ''}${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
 

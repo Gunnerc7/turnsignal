@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { BoardConfig, fetchBoards } from '../lib/boards';
+import { isAgingRed } from '../lib/aging';
 
 // ── Data layer ───────────────────────────────────────────────────────────
 // Fetching and stats computation are kept fully separate from rendering
@@ -88,6 +89,8 @@ export default function AnalyticsPage({
   const [boards, setBoards] = useState<BoardConfig[]>([]);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [yellowDays, setYellowDays] = useState(3);
+  const [redDays, setRedDays] = useState(5);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<RangeKey>('month');
   const [customStart, setCustomStart] = useState('');
@@ -102,6 +105,12 @@ export default function AnalyticsPage({
       setLoading(true);
 
       const boardsData = await fetchBoards(dealershipId);
+
+      const { data: dealershipData } = await supabase
+        .from('dealerships')
+        .select('yellow_threshold_days, red_threshold_days')
+        .eq('id', dealershipId)
+        .single();
 
       const { data: vehiclesData } = await supabase
         .from('vehicles')
@@ -128,6 +137,8 @@ export default function AnalyticsPage({
         setBoards(boardsData);
         setVehicles(vehiclesData ?? []);
         setHistory(historyData);
+        setYellowDays(dealershipData?.yellow_threshold_days ?? 3);
+        setRedDays(dealershipData?.red_threshold_days ?? 5);
         setLoading(false);
       }
     }
@@ -166,15 +177,32 @@ export default function AnalyticsPage({
       return arr.reduce((a, b) => a + b, 0) / arr.length;
     }
 
-    // Bottleneck — whichever stage has the highest average duration.
+    // Bottleneck — NOT just average historical duration. This sums up how
+    // many days are currently "stuck" in each stage right now: a stage with
+    // one vehicle that's been sitting for a week shows up the same as a
+    // stage with seven vehicles that have each been there a day — both are
+    // "7 vehicle-days of backlog." A stage with lots of vehicles that are
+    // all moving through quickly does NOT count as a bottleneck by this
+    // measure, even though its raw count is high. Inbound is excluded,
+    // same reasoning as the aging colors — that wait isn't on the dealership.
+    const currentBacklog = new Map<string, { count: number; totalDays: number }>();
+    vehicles.forEach((v) => {
+      if (v.completed || v.stage === 'inbound_trade_in') return;
+      const key = `${v.board}::${v.stage}`;
+      const days = (Date.now() - new Date(v.stage_entered_at).getTime()) / 86400000;
+      const entry = currentBacklog.get(key) ?? { count: 0, totalDays: 0 };
+      entry.count += 1;
+      entry.totalDays += days;
+      currentBacklog.set(key, entry);
+    });
+
     const bottleneck =
-      Array.from(stageDurations.entries())
-        .map(([key, arr]) => {
+      Array.from(currentBacklog.entries())
+        .map(([key, { count, totalDays }]) => {
           const [board, stage] = key.split('::');
-          const avgDays = arr.reduce((a, b) => a + b, 0) / arr.length;
-          return { board, stage, avgDays };
+          return { board, stage, count, totalDays };
         })
-        .sort((a, b) => b.avgDays - a.avgDays)[0] ?? null;
+        .sort((a, b) => b.totalDays - a.totalDays)[0] ?? null;
 
     // Turn time: Inbound → Price for Lot, for vehicles that reached it in range.
     const turnTimes: number[] = [];
@@ -207,6 +235,20 @@ export default function AnalyticsPage({
     ).length;
     const mainBoardActive = vehicles.filter((v) => v.board === 'main' && !v.completed).length;
 
+    // Currently aging red right now — a count, distinct from "longest
+    // aging" which only shows the single worst case.
+    const agingRedCount = vehicles.filter((v) => {
+      if (v.completed) return false;
+      const anchor = v.recon_started_at ?? v.stage_entered_at;
+      const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
+      return isAgingRed(v.stage, days, yellowDays, redDays);
+    }).length;
+
+    const rangeStartForAdded = getRangeBounds(range, customStart, customEnd).start;
+    const addedInRange = rangeStartForAdded
+      ? vehicles.filter((v) => new Date(v.created_at) >= rangeStartForAdded).length
+      : vehicles.length;
+
     return {
       currentCounts,
       avgDaysFor,
@@ -215,12 +257,15 @@ export default function AnalyticsPage({
       fastestTurn,
       slowestTurn,
       completedInRange: turnTimes.length,
+      addedInRange,
       longestAging,
       damagedCount,
       overdueLoaners,
       mainBoardActive,
+      agingRedCount,
     };
-  }, [vehicles, history]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicles, history, yellowDays, redDays, range, customStart, customEnd]);
 
   function bottleneckLabel(): string {
     if (!stats.bottleneck) return '—';
@@ -292,8 +337,20 @@ export default function AnalyticsPage({
               <p className="text-xs text-steel">Active on Main Board</p>
             </div>
             <div className="bg-asphalt rounded-lg p-3">
+              <p className="text-2xl font-display font-bold text-ink tabular">{stats.addedInRange}</p>
+              <p className="text-xs text-steel">Added in this period</p>
+            </div>
+            <div className="bg-asphalt rounded-lg p-3">
               <p className="text-2xl font-display font-bold text-ink tabular">{stats.completedInRange}</p>
               <p className="text-xs text-steel">Completed in this period</p>
+            </div>
+            <div className="bg-asphalt rounded-lg p-3">
+              <p
+                className={`text-2xl font-display font-bold tabular ${stats.agingRedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
+              >
+                {stats.agingRedCount}
+              </p>
+              <p className="text-xs text-steel">Aging red right now</p>
             </div>
             <div className="bg-asphalt rounded-lg p-3">
               <p
@@ -313,11 +370,31 @@ export default function AnalyticsPage({
             </div>
           </div>
 
+          {/* Reserved for floorplan/cost data once that calculation is ready —
+              intentionally placeholders, not faked numbers. */}
+          <div>
+            <h2 className="font-display font-semibold text-ink text-sm mb-2">Cost (coming soon)</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="border border-dashed border-gray-300 rounded-lg p-3">
+                <p className="text-2xl font-display font-bold text-gray-300">—</p>
+                <p className="text-xs text-steel">Floorplan cost per day</p>
+              </div>
+              <div className="border border-dashed border-gray-300 rounded-lg p-3">
+                <p className="text-2xl font-display font-bold text-gray-300">—</p>
+                <p className="text-xs text-steel">Avg. cost per vehicle</p>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="border border-signal-amber rounded-lg p-3">
               <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Bottleneck stage</p>
               <p className="font-display font-semibold text-ink">{bottleneckLabel()}</p>
-              <p className="text-xs text-steel tabular">{formatDays(stats.bottleneck?.avgDays ?? null)} average</p>
+              <p className="text-xs text-steel tabular">
+                {stats.bottleneck
+                  ? `${stats.bottleneck.count} vehicle${stats.bottleneck.count === 1 ? '' : 's'} waiting · ${formatDays(stats.bottleneck.totalDays)} combined`
+                  : '—'}
+              </p>
             </div>
             <div className="border border-gray-200 rounded-lg p-3">
               <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Longest aging, active now</p>
