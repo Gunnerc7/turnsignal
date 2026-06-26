@@ -179,22 +179,24 @@ export default function VehicleCard({
       className={`relative bg-white rounded-xl shadow-sm border border-gray-200 p-3.5 mb-3 pl-5 transition-opacity duration-150
         before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-xl ${ageStripe(days, thresholds)}`}
     >
-      <div
-        {...listeners}
-        {...attributes}
-        style={{ touchAction: 'none' }}
-        className="absolute top-1 right-1 w-9 h-9 flex items-center justify-center cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-400 active:scale-90 transition"
-        aria-label="Drag to move"
-      >
-        <svg width="14" height="18" viewBox="0 0 12 16" fill="currentColor">
-          <circle cx="2" cy="2" r="1.5" />
-          <circle cx="2" cy="8" r="1.5" />
-          <circle cx="2" cy="14" r="1.5" />
-          <circle cx="9" cy="2" r="1.5" />
-          <circle cx="9" cy="8" r="1.5" />
-          <circle cx="9" cy="14" r="1.5" />
-        </svg>
-      </div>
+      {!vehicle.completed && (
+        <div
+          {...listeners}
+          {...attributes}
+          style={{ touchAction: 'none' }}
+          className="absolute top-1 right-1 w-9 h-9 flex items-center justify-center cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-400 active:scale-90 transition"
+          aria-label="Drag to move"
+        >
+          <svg width="14" height="18" viewBox="0 0 12 16" fill="currentColor">
+            <circle cx="2" cy="2" r="1.5" />
+            <circle cx="2" cy="8" r="1.5" />
+            <circle cx="2" cy="14" r="1.5" />
+            <circle cx="9" cy="2" r="1.5" />
+            <circle cx="9" cy="8" r="1.5" />
+            <circle cx="9" cy="14" r="1.5" />
+          </svg>
+        </div>
+      )}
 
       <div className="flex items-start gap-2 pr-7">
         <button

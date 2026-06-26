@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { BoardConfig } from '../lib/boards';
@@ -24,6 +25,10 @@ export default function KanbanColumn({
   onMoved: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stageKey });
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  const activeVehicles = vehicles.filter((v) => !v.completed);
+  const completedVehicles = vehicles.filter((v) => v.completed);
 
   return (
     <div
@@ -34,7 +39,7 @@ export default function KanbanColumn({
     >
       <div className="flex items-center justify-between mb-3 px-0.5">
         <p className="font-display font-bold text-ink text-base">
-          {label} <span className="text-steel font-normal text-sm">({vehicles.length})</span>
+          {label} <span className="text-steel font-normal text-sm">({activeVehicles.length})</span>
         </p>
         <button
           onClick={onAddClick}
@@ -46,14 +51,53 @@ export default function KanbanColumn({
       </div>
 
       <div className="overflow-y-auto flex-1">
-        {vehicles.length === 0 ? (
+        {activeVehicles.length === 0 && completedVehicles.length === 0 ? (
           <p className="text-steel text-sm py-6 text-center">No vehicles here</p>
         ) : (
-          <SortableContext items={vehicles.map((v) => v.id)} strategy={verticalListSortingStrategy}>
-            {vehicles.map((v) => (
-              <VehicleCard key={v.id} vehicle={v} boards={boards} yellowDays={yellowDays} redDays={redDays} onMoved={onMoved} />
-            ))}
-          </SortableContext>
+          <>
+            {activeVehicles.length === 0 ? (
+              <p className="text-steel text-sm py-4 text-center">No active vehicles</p>
+            ) : (
+              <SortableContext items={activeVehicles.map((v) => v.id)} strategy={verticalListSortingStrategy}>
+                {activeVehicles.map((v) => (
+                  <VehicleCard
+                    key={v.id}
+                    vehicle={v}
+                    boards={boards}
+                    yellowDays={yellowDays}
+                    redDays={redDays}
+                    onMoved={onMoved}
+                  />
+                ))}
+              </SortableContext>
+            )}
+
+            {completedVehicles.length > 0 && (
+              <div className="mt-1">
+                <button
+                  onClick={() => setShowCompleted((s) => !s)}
+                  className="w-full flex items-center gap-1.5 text-xs font-semibold text-steel py-2.5 px-1"
+                >
+                  <span className={`transition-transform ${showCompleted ? 'rotate-90' : ''}`}>›</span>
+                  Completed ({completedVehicles.length})
+                </button>
+                {showCompleted && (
+                  <div>
+                    {completedVehicles.map((v) => (
+                      <VehicleCard
+                        key={v.id}
+                        vehicle={v}
+                        boards={boards}
+                        yellowDays={yellowDays}
+                        redDays={redDays}
+                        onMoved={onMoved}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
