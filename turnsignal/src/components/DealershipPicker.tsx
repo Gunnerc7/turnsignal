@@ -21,6 +21,8 @@ export default function DealershipPicker({
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Dealership | null>(null);
   const [openGroup, setOpenGroup] = useState<Group | null>(null);
+  const [editingDealershipId, setEditingDealershipId] = useState<string | null>(null);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
 
   async function loadDealerships() {
     const { data } = await supabase
@@ -104,21 +106,39 @@ export default function DealershipPicker({
   }
 
   function renderStandaloneRow(d: Dealership) {
+    const isEditing = editingDealershipId === d.id;
     return (
       <div key={d.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
-        <div className="flex items-center gap-2 mb-2">
-          <input
-            defaultValue={d.name}
-            onBlur={(e) => {
-              if (e.target.value.trim() && e.target.value.trim() !== d.name) {
-                handleRenameDealership(d, e.target.value.trim());
-              }
-            }}
-            className="flex-1 font-medium text-ink border border-transparent hover:border-gray-300 focus:border-signal-blue rounded px-1 -mx-1"
-          />
-          <button onClick={() => onSelect(d)} className="text-signal-blue text-sm font-medium flex-shrink-0">
-            View board →
-          </button>
+        <div className="flex items-center gap-1.5 mb-2">
+          {isEditing ? (
+            <input
+              autoFocus
+              defaultValue={d.name}
+              onBlur={(e) => {
+                if (e.target.value.trim() && e.target.value.trim() !== d.name) {
+                  handleRenameDealership(d, e.target.value.trim());
+                }
+                setEditingDealershipId(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              className="flex-1 font-medium text-ink border border-signal-blue rounded px-1 -mx-1"
+            />
+          ) : (
+            <>
+              <button onClick={() => onSelect(d)} className="flex-1 text-left font-medium text-ink truncate">
+                {d.name}
+              </button>
+              <button
+                onClick={() => setEditingDealershipId(d.id)}
+                aria-label="Rename"
+                className="text-steel flex-shrink-0 p-1"
+              >
+                ✎
+              </button>
+            </>
+          )}
         </div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex gap-3 text-sm">
@@ -215,15 +235,41 @@ export default function DealershipPicker({
               <p className="text-steel text-sm">None.</p>
             ) : (
               <div className="space-y-2">
-                {groupsWithCounts.map((g) => (
-                  <button
-                    key={g.id}
-                    onClick={() => setOpenGroup(g)}
-                    className="w-full text-left bg-white border border-gray-200 rounded-lg px-4 py-3 font-medium text-ink"
-                  >
-                    {g.name} <span className="text-steel font-normal">({g.members.length})</span>
-                  </button>
-                ))}
+                {groupsWithCounts.map((g) =>
+                  editingGroupId === g.id ? (
+                    <input
+                      key={g.id}
+                      autoFocus
+                      defaultValue={g.name}
+                      onBlur={(e) => {
+                        if (e.target.value.trim() && e.target.value.trim() !== g.name) {
+                          handleRenameGroup(g, e.target.value.trim());
+                        }
+                        setEditingGroupId(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                      }}
+                      className="w-full bg-white border border-signal-blue rounded-lg px-4 py-3 font-medium text-ink"
+                    />
+                  ) : (
+                    <div
+                      key={g.id}
+                      className="w-full flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-4 py-3"
+                    >
+                      <button onClick={() => setOpenGroup(g)} className="flex-1 text-left font-medium text-ink truncate">
+                        {g.name} <span className="text-steel font-normal">({g.members.length})</span>
+                      </button>
+                      <button
+                        onClick={() => setEditingGroupId(g.id)}
+                        aria-label="Rename group"
+                        className="text-steel flex-shrink-0 p-1"
+                      >
+                        ✎
+                      </button>
+                    </div>
+                  )
+                )}
               </div>
             )}
           </div>
