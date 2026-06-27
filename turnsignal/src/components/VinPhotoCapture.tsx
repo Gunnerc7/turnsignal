@@ -36,13 +36,26 @@ export default function VinPhotoCapture({
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
 
-    // Crop to just the guide box's region of the actual source frame —
-    // this is what strips out the surrounding sticker clutter (GVWR, tire
+    // The video is shown with object-cover, which crops the raw camera
+    // frame to fill its on-screen box — so the green guide box (positioned
+    // relative to that already-cropped display) does NOT line up with
+    // simple percentages of the raw source frame unless the camera's
+    // aspect ratio happens to exactly match the screen's. We have to work
+    // out what's actually visible on screen first, then crop within that.
+    const rect = video.getBoundingClientRect();
+    const scale = Math.max(rect.width / video.videoWidth, rect.height / video.videoHeight);
+    const visibleSourceWidth = rect.width / scale;
+    const visibleSourceHeight = rect.height / scale;
+    const visibleSourceX = (video.videoWidth - visibleSourceWidth) / 2;
+    const visibleSourceY = (video.videoHeight - visibleSourceHeight) / 2;
+
+    // Crop to just the guide box's region within that visible area — this
+    // is what strips out the surrounding sticker clutter (GVWR, tire
     // size, etc.) before OCR ever sees the image.
-    const cropWidth = video.videoWidth * GUIDE_WIDTH_FRACTION;
-    const cropHeight = video.videoHeight * GUIDE_HEIGHT_FRACTION;
-    const cropX = (video.videoWidth - cropWidth) / 2;
-    const cropY = (video.videoHeight - cropHeight) / 2;
+    const cropWidth = visibleSourceWidth * GUIDE_WIDTH_FRACTION;
+    const cropHeight = visibleSourceHeight * GUIDE_HEIGHT_FRACTION;
+    const cropX = visibleSourceX + (visibleSourceWidth - cropWidth) / 2;
+    const cropY = visibleSourceY + (visibleSourceHeight - cropHeight) / 2;
 
     const canvas = document.createElement('canvas');
     canvas.width = cropWidth;
