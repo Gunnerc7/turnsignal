@@ -34,22 +34,23 @@ export function isValidVinChecksum(vin: string): boolean {
   return vin[8] === expected;
 }
 
-// Pulls every possible 17-character window out of the OCR'd text and
-// prefers whichever one actually passes the checksum — this is what lets
-// us recover the right answer even when the VIN is embedded in a longer
-// run of text (e.g. surrounding sticker clutter that leaked into the crop).
-function findBestVinCandidate(rawText: string): string | null {
-  const cleaned = rawText.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const runs = cleaned.match(VALID_RUN_PATTERN) ?? [];
+function cleanText(rawText: string): string {
+  return rawText.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
 
+// Pulls every possible 17-character window out of runs of 17+ valid
+// characters in a row. Real photos often DON'T produce one unbroken clean
+// run — this only covers the cases where one exists; the lenient fallback
+// below covers everything else.
+function findCandidatesFromCleanRuns(cleaned: string): string[] {
+  const runs = cleaned.match(VALID_RUN_PATTERN) ?? [];
   const candidates: string[] = [];
   for (const run of runs) {
     for (let i = 0; i + 17 <= run.length; i++) {
       candidates.push(run.slice(i, i + 17));
     }
   }
-
-  return candidates.find(isValidVinChecksum) ?? candidates[0] ?? null;
+  return candidates;
 }
 
 async function recognizeWithMode(imageDataUrl: string, mode: PSM): Promise<string> {
@@ -66,23 +67,30 @@ async function recognizeWithMode(imageDataUrl: string, mode: PSM): Promise<strin
 export async function extractVinFromImage(
   imageDataUrl: string
 ): Promise<{ vin: string | null; verified: boolean }> {
-  const firstPass = await recognizeWithMode(imageDataUrl, PSM.SINGLE_LINE);
-  const candidate1 = findBestVinCandidate(firstPass);
-  if (candidate1 && isValidVinChecksum(candidate1)) {
-    return { vin: candidate1, verified: true };
+  // Always run both passes — RAW_LINE skips some of Tesseract's internal
+  // text-line heuristics, which can be exactly what causes characters to
+  // get silently dropped or misread on SINGLE_LINE.
+  const firstCleaned = cleanText(await recognizeWithMode(imageDataUrl, PSM.SINGLE_LINE));
+  const secondCleaned = cleanText(await recognizeWithMode(imageDataUrl, PSM.RAW_LINE));
+
+  const allCandidates = [
+    ...findCandidatesFromCleanRuns(firstCleaned),
+    ...findCandidatesFromCleanRuns(secondCleaned),
+  ];
+
+  // Prefer anything that actually passes the official checksum.
+  const validated = allCandidates.find(isValidVinChecksum);
+  if (validated) return { vin: validated, verified: true };
+
+  // Nothing passed the checksum, but at least one full 17-character run
+  // was found — hand back the first one, flagged as unverified.
+  if (allCandidates.length > 0) {
+    return { vin: allCandidates[0], verified: false };
   }
 
-  // SINGLE_LINE didn't land on a checksum-valid 17 characters — RAW_LINE
-  // skips some of Tesseract's internal text-line heuristics, which can be
-  // exactly what causes characters to get silently dropped or misread.
-  const secondPass = await recognizeWithMode(imageDataUrl, PSM.RAW_LINE);
-  const candidate2 = findBestVinCandidate(secondPass);
-  if (candidate2 && isValidVinChecksum(candidate2)) {
-    return { vin: candidate2, verified: true };
-  }
-
-  // Neither pass produced a checksum-valid VIN — hand back the best guess
-  // we have, but flagged as unverified so the UI can ask for a double-check
-  // instead of silently accepting something that's likely wrong.
-  return { vin: candidate1 ?? candidate2, verified: false };
+  // No clean 17-character run from either pass at all — fall back to
+  // whichever attempt read more usable characters, so there's still a
+  // real starting point to correct instead of a dead end.
+  const best = secondCleaned.length > firstCleaned.length ? secondCleaned : firstCleaned;
+  return { vin: best.length > 0 ? best.slice(0, 17) : null, verified: false };
 }
