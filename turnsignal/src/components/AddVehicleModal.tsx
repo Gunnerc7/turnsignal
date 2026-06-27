@@ -82,14 +82,22 @@ export default function AddVehicleModal({
     setScanning(true);
     setError(null);
 
-    const detected = await extractVinFromImage(dataUrl);
+    const { vin: detected, verified } = await extractVinFromImage(dataUrl);
     setScanning(false);
 
     if (!detected) {
       setError("Couldn't read a clear VIN from that photo — check the field below and type or retake it.");
       return;
     }
+
     setVin(detected);
+
+    if (!verified) {
+      setError(
+        "Read a VIN, but it didn't pass the standard checksum — double-check it carefully before saving, or retake the photo."
+      );
+    }
+
     runDecode(detected);
   }
 
