@@ -82,7 +82,7 @@ export default function VehicleCard({
   // resets on a stage move. Still in Inbound with no anchor yet? Fall back
   // to the neutral per-stage count from getThresholds returning null.
   const days = daysSince(vehicle.recon_started_at ?? vehicle.stage_entered_at);
-  const thresholds = getThresholds(vehicle.stage, yellowDays, redDays);
+  const thresholds = getThresholds(vehicle.board, vehicle.stage, yellowDays, redDays);
   const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
   const vehicleLabel = `${vehicle.stock_number ? vehicle.stock_number + '-' : ''}${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
 

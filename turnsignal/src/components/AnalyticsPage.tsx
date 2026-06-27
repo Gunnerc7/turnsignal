@@ -96,8 +96,6 @@ export default function AnalyticsPage({
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
-  const { start: rangeStart, end: rangeEnd } = getRangeBounds(range, customStart, customEnd);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -121,15 +119,15 @@ export default function AnalyticsPage({
 
       const vehicleIds = (vehiclesData ?? []).map((v) => v.id);
 
+      // Fetched in full, unfiltered by date — a vehicle's Service entry can
+      // predate the selected window even when its Price for Lot completion
+      // falls inside it, so date filtering happens client-side below instead.
       let historyData: HistoryRow[] = [];
       if (vehicleIds.length > 0) {
-        let query = supabase
+        const { data } = await supabase
           .from('stage_history')
           .select('vehicle_id, board, stage, entered_at, exited_at')
-          .in('vehicle_id', vehicleIds)
-          .lte('entered_at', rangeEnd.toISOString());
-        if (rangeStart) query = query.gte('entered_at', rangeStart.toISOString());
-        const { data } = await query;
+          .in('vehicle_id', vehicleIds);
         historyData = data ?? [];
       }
 
@@ -147,11 +145,15 @@ export default function AnalyticsPage({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dealershipId, range, customStart, customEnd]);
+  }, [dealershipId]);
 
   const stats = useMemo(() => {
-    const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
+    const { start: rangeStart, end: rangeEnd } = getRangeBounds(range, customStart, customEnd);
+    const inRange = (dateStr: string) => {
+      const d = new Date(dateStr);
+      if (rangeStart && d < rangeStart) return false;
+      return d <= rangeEnd;
+    };
 
     // Current count by stage — always "right now," a snapshot, not range-filtered.
     const currentCounts = new Map<string, number>();
@@ -163,7 +165,7 @@ export default function AnalyticsPage({
     // Completed stays within the selected range, grouped by stage.
     const stageDurations = new Map<string, number[]>();
     history.forEach((row) => {
-      if (!row.exited_at) return;
+      if (!row.exited_at || !inRange(row.entered_at)) return;
       const key = `${row.board}::${row.stage}`;
       const days = (new Date(row.exited_at).getTime() - new Date(row.entered_at).getTime()) / 86400000;
       const arr = stageDurations.get(key) ?? [];
@@ -207,14 +209,29 @@ export default function AnalyticsPage({
         })
         .sort((a, b) => b.totalDays - a.totalDays)[0] ?? null;
 
-    // Turn time: Inbound → Price for Lot, for vehicles that reached it in range.
+    // Turn Rate: Service → Price for Lot. Inbound time is excluded on
+    // purpose — that's largely a pickup/transit wait, not something the
+    // team controls, so it shouldn't count toward this number.
+    // A vehicle's Service entry can predate the selected window even when
+    // its Price for Lot completion falls inside it, so we look up the
+    // Service entry from the full unfiltered history, but only count a
+    // completion if it actually happened within the selected period.
+    const serviceEnteredByVehicle = new Map<string, Date>();
+    history.forEach((row) => {
+      if (row.stage !== 'service') return;
+      const entered = new Date(row.entered_at);
+      const existing = serviceEnteredByVehicle.get(row.vehicle_id);
+      if (!existing || entered < existing) {
+        serviceEnteredByVehicle.set(row.vehicle_id, entered);
+      }
+    });
+
     const turnTimes: number[] = [];
     history.forEach((row) => {
-      if (row.stage !== 'price_for_lot') return;
-      const vehicle = vehicleById.get(row.vehicle_id);
-      if (!vehicle?.recon_started_at) return;
-      const days =
-        (new Date(row.entered_at).getTime() - new Date(vehicle.recon_started_at).getTime()) / 86400000;
+      if (row.stage !== 'price_for_lot' || !inRange(row.entered_at)) return;
+      const serviceEntered = serviceEnteredByVehicle.get(row.vehicle_id);
+      if (!serviceEntered) return;
+      const days = (new Date(row.entered_at).getTime() - serviceEntered.getTime()) / 86400000;
       turnTimes.push(days);
     });
     const avgTurnTime = turnTimes.length ? turnTimes.reduce((a, b) => a + b, 0) / turnTimes.length : null;
@@ -239,18 +256,17 @@ export default function AnalyticsPage({
     const mainBoardActive = vehicles.filter((v) => v.board === 'main' && !v.completed).length;
 
     // Currently aging red right now — a count, distinct from "longest
-    // aging" which only shows the single worst case.
+    // aging" which only shows the single worst case. Loaners are excluded
+    // here automatically too, since isAgingRed treats that board as
+    // never color-coded.
     const agingRedCount = vehicles.filter((v) => {
       if (v.completed) return false;
       const anchor = v.recon_started_at ?? v.stage_entered_at;
       const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
-      return isAgingRed(v.stage, days, yellowDays, redDays);
+      return isAgingRed(v.board, v.stage, days, yellowDays, redDays);
     }).length;
 
-    const rangeStartForAdded = getRangeBounds(range, customStart, customEnd).start;
-    const addedInRange = rangeStartForAdded
-      ? vehicles.filter((v) => new Date(v.created_at) >= rangeStartForAdded).length
-      : vehicles.length;
+    const addedInRange = vehicles.filter((v) => inRange(v.created_at)).length;
 
     return {
       currentCounts,
@@ -326,7 +342,7 @@ export default function AnalyticsPage({
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           <div className="bg-ink rounded-xl p-5 text-white">
-            <p className="text-xs text-mist uppercase tracking-wide mb-1">Avg. Inbound → Price for Lot</p>
+            <p className="text-xs text-mist uppercase tracking-wide mb-1">Turn Rate (Service → Price for Lot)</p>
             <p className="font-display text-3xl font-bold">{formatDays(stats.avgTurnTime)}</p>
             <div className="flex gap-4 mt-2 text-xs text-mist">
               <span>Fastest: {formatDays(stats.fastestTurn)}</span>
