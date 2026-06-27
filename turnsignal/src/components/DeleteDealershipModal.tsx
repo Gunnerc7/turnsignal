@@ -35,10 +35,15 @@ export default function DeleteDealershipModal({
       return;
     }
 
+    // Owner profiles are explicitly excluded here — never delete one as a
+    // side effect of removing a dealership. The database also enforces
+    // this independently (a trigger blocks it outright), but this keeps
+    // the app from even attempting it in the first place.
     const { error: profilesError } = await supabase
       .from('profiles')
       .delete()
-      .eq('dealership_id', dealershipId);
+      .eq('dealership_id', dealershipId)
+      .neq('role', 'owner');
     if (profilesError) {
       setDeleting(false);
       setError(profilesError.message);
