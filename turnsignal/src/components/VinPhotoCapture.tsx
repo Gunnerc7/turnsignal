@@ -52,21 +52,13 @@ export default function VinPhotoCapture({
 
     ctx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 
-    // Grayscale + contrast boost — a well-known accuracy improvement for
-    // OCR on embossed or low-contrast label text.
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    const contrast = 1.4;
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      const adjusted = (gray - 128) * contrast + 128;
-      const clamped = Math.max(0, Math.min(255, adjusted));
-      data[i] = data[i + 1] = data[i + 2] = clamped;
-    }
-    ctx.putImageData(imageData, 0, 0);
-
     // Tesseract reads upscaled text more reliably than small source crops —
     // this is a specifically documented accuracy factor for OCR engines.
+    // (We previously also applied a manual contrast boost here, but under
+    // strong lighting that can blow out highlights and crush shadows
+    // before Tesseract even sees the image — actively destroying detail
+    // rather than helping. Tesseract already does its own adaptive
+    // thresholding internally, so we let it handle that instead.)
     const upscale = 2.5;
     const finalCanvas = document.createElement('canvas');
     finalCanvas.width = canvas.width * upscale;
