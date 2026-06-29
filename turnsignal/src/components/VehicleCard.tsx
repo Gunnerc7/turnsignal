@@ -80,7 +80,7 @@ export default function VehicleCard({
   const days = daysSince(vehicle.recon_started_at ?? vehicle.stage_entered_at);
   const thresholds = getThresholds(vehicle.board, vehicle.stage, yellowDays, redDays);
   const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
-  const carryingCost = carryingCostSoFar(vehicle.created_at, vehicle.is_new, newRatePerDay, usedRatePerDay);
+  const carryingCost = carryingCostSoFar(vehicle, newRatePerDay, usedRatePerDay);
   const vehicleLabel = `${vehicle.stock_number ? vehicle.stock_number + '-' : ''}${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -113,12 +113,14 @@ export default function VehicleCard({
   async function handleToggleComplete() {
     setToggling(true);
     const nowCompleting = !vehicle.completed;
+    const now = new Date().toISOString();
     await supabase
       .from('vehicles')
       .update({
         completed: nowCompleting,
         completed_by_email: nowCompleting ? session?.user.email ?? null : null,
         completed_by_name: nowCompleting ? userName : null,
+        completed_at: nowCompleting ? now : null,
       })
       .eq('id', vehicle.id);
     setToggling(false);
@@ -257,8 +259,8 @@ export default function VehicleCard({
       )}
 
       {carryingCost > 0 && (
-        <p className="mt-1.5 pl-7 text-xs font-bold text-ink tabular">
-          ${carryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })} holding cost
+        <p className="mt-1.5 pl-7 text-sm font-bold text-ink tabular">
+          ${carryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
         </p>
       )}
 

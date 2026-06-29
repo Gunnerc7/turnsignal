@@ -57,6 +57,7 @@ type VehicleRow = {
   stage_entered_at: string;
   recon_started_at: string | null;
   completed: boolean;
+  completed_at: string | null;
   has_damage: boolean;
   is_new: boolean;
   loaner_return_date: string | null;
@@ -121,7 +122,7 @@ export default function AnalyticsPage({
       const { data: vehiclesData } = await supabase
         .from('vehicles')
         .select(
-          'id, board, stage, stage_entered_at, recon_started_at, completed, has_damage, is_new, loaner_return_date, created_at, stock_number, year, make, model'
+          'id, board, stage, stage_entered_at, recon_started_at, completed, completed_at, has_damage, is_new, loaner_return_date, created_at, stock_number, year, make, model'
         )
         .eq('dealership_id', dealershipId);
 
@@ -255,12 +256,17 @@ export default function AnalyticsPage({
       }
     });
 
+    // The end anchor is the moment it's actually marked complete while in
+    // Price for Lot — not just the moment it arrived there. A vehicle can
+    // sit in that column a while (photos, pricing, approval) before recon
+    // work is genuinely finished, so completion is the truer finish line.
     const turnTimes: number[] = [];
-    history.forEach((row) => {
-      if (row.stage !== 'price_for_lot' || !inRange(row.entered_at)) return;
-      const serviceEntered = serviceEnteredByVehicle.get(row.vehicle_id);
+    vehicles.forEach((v) => {
+      if (v.stage !== 'price_for_lot' || !v.completed || !v.completed_at) return;
+      if (!inRange(v.completed_at)) return;
+      const serviceEntered = serviceEnteredByVehicle.get(v.id);
       if (!serviceEntered) return;
-      const days = (new Date(row.entered_at).getTime() - serviceEntered.getTime()) / 86400000;
+      const days = (new Date(v.completed_at).getTime() - serviceEntered.getTime()) / 86400000;
       turnTimes.push(days);
     });
     const avgTurnTime = turnTimes.length ? turnTimes.reduce((a, b) => a + b, 0) / turnTimes.length : null;
@@ -288,7 +294,7 @@ export default function AnalyticsPage({
     // a live number now that real rates exist, not a placeholder.
     const totalCarryingCost = vehicles
       .filter((v) => !v.completed)
-      .reduce((sum, v) => sum + carryingCostSoFar(v.created_at, v.is_new, newRatePerDay, usedRatePerDay), 0);
+      .reduce((sum, v) => sum + carryingCostSoFar(v, newRatePerDay, usedRatePerDay), 0);
 
     // Currently aging red right now — a count, distinct from "longest
     // aging" which only shows the single worst case. Loaners are excluded
