@@ -209,35 +209,24 @@ export default function AnalyticsPage({
       return arr.reduce((a, b) => a + b, 0) / arr.length;
     }
 
-    // Bottleneck — NOT just average historical duration. This sums up how
-    // many days are currently "stuck" in each stage right now: a stage with
-    // one vehicle that's been sitting for a week shows up the same as a
-    // stage with seven vehicles that have each been there a day — both are
-    // "7 vehicle-days of backlog." A stage with lots of vehicles that are
-    // all moving through quickly does NOT count as a bottleneck by this
-    // measure, even though its raw count is high. Inbound is excluded,
-    // same reasoning as the aging colors — that wait isn't on the dealership.
-    // Restricted to the Main Board only — Loaners and similar boards have
-    // naturally long stays (e.g. ~30 days for a service loaner) that aren't
-    // a recon bottleneck, just how that board normally works.
-    const currentBacklog = new Map<string, { count: number; totalDays: number }>();
-    vehicles.forEach((v) => {
-      if (v.completed || v.stage === 'inbound_trade_in' || v.board !== 'main') return;
-      const key = `${v.board}::${v.stage}`;
-      const days = (Date.now() - new Date(v.stage_entered_at).getTime()) / 86400000;
-      const entry = currentBacklog.get(key) ?? { count: 0, totalDays: 0 };
-      entry.count += 1;
-      entry.totalDays += days;
-      currentBacklog.set(key, entry);
-    });
-
+    // Bottleneck — whichever Main Board stage has taken the longest on
+    // average to get through, across completed stays in the selected
+    // period. This is the same number as the "Avg. time" column in the
+    // table below, just surfaced as its own callout. Inbound is excluded,
+    // same reasoning as the aging colors — that wait isn't on the
+    // dealership. Restricted to Main Board only — Loaners and similar
+    // boards have naturally long stays (e.g. ~30 days for a service
+    // loaner) that aren't a recon bottleneck, just how that board
+    // normally works.
     const bottleneck =
-      Array.from(currentBacklog.entries())
-        .map(([key, { count, totalDays }]) => {
+      Array.from(stageDurations.entries())
+        .map(([key, arr]) => {
           const [board, stage] = key.split('::');
-          return { board, stage, count, totalDays };
+          const avgDays = arr.reduce((a, b) => a + b, 0) / arr.length;
+          return { board, stage, avgDays };
         })
-        .sort((a, b) => b.totalDays - a.totalDays)[0] ?? null;
+        .filter((entry) => entry.board === 'main' && entry.stage !== 'inbound_trade_in')
+        .sort((a, b) => b.avgDays - a.avgDays)[0] ?? null;
 
     // Turn Rate: Service → Price for Lot. Inbound time is excluded on
     // purpose — that's largely a pickup/transit wait, not something the
@@ -491,9 +480,7 @@ export default function AnalyticsPage({
               <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Bottleneck stage</p>
               <p className="font-display font-semibold text-ink">{bottleneckLabel()}</p>
               <p className="text-xs text-steel tabular">
-                {stats.bottleneck
-                  ? `${stats.bottleneck.count} vehicle${stats.bottleneck.count === 1 ? '' : 's'} waiting · ${formatDays(stats.bottleneck.totalDays)} combined`
-                  : '—'}
+                {stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} average to get through` : '—'}
               </p>
             </div>
             <div className="border border-gray-200 rounded-lg p-3">
