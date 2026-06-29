@@ -45,9 +45,14 @@ export default function PhotosModal({
   }, [vehicleId]);
 
   async function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    // Copy into a plain array before touching the input's value — resetting
+    // it (needed so the same files can be picked again later) can empty out
+    // a FileList we're still holding a live reference to on some browsers.
+    const files = Array.from(fileList);
     e.target.value = '';
-    if (!files || files.length === 0) return;
 
     setUploading(true);
     setError(null);
