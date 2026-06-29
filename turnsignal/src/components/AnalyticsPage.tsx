@@ -98,6 +98,7 @@ export default function AnalyticsPage({
   const [newRateInput, setNewRateInput] = useState('0');
   const [usedRateInput, setUsedRateInput] = useState('0');
   const [savingRates, setSavingRates] = useState(false);
+  const [showRateSettings, setShowRateSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<RangeKey>('month');
   const [customStart, setCustomStart] = useState('');
@@ -335,10 +336,58 @@ export default function AnalyticsPage({
           <p className="text-[11px] text-mist uppercase tracking-wider leading-none">Analytics</p>
           <h1 className="font-display text-lg font-semibold leading-tight">{dealershipName}</h1>
         </div>
-        <button onClick={onClose} className="text-sm text-mist hover:text-white py-2">
-          Close
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowRateSettings((s) => !s)}
+            className="text-xs text-mist hover:text-white py-2 whitespace-nowrap"
+          >
+            💰 Rates
+          </button>
+          <button onClick={onClose} className="text-sm text-mist hover:text-white py-2">
+            Close
+          </button>
+        </div>
       </div>
+
+      {showRateSettings && (
+        <div className="flex-shrink-0 bg-asphalt border-b border-gray-200 px-4 py-3">
+          <p className="text-xs text-steel mb-2">
+            Per-day holding cost, separate for new vs used — shown on every card. Something you'd set once and
+            barely touch, not a daily setting.
+          </p>
+          <div className="grid grid-cols-2 gap-3 mb-2">
+            <div>
+              <label className="block text-xs font-medium text-ink mb-1">New ($/day)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={newRateInput}
+                onChange={(e) => setNewRateInput(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink mb-1">Used ($/day)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={usedRateInput}
+                onChange={(e) => setUsedRateInput(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleSaveRates}
+            disabled={savingRates}
+            className="w-full bg-signal-blue text-white text-sm font-medium rounded-lg py-2 disabled:opacity-60"
+          >
+            {savingRates ? 'Saving…' : 'Save rates'}
+          </button>
+        </div>
+      )}
 
       <div className="flex-shrink-0 bg-asphalt border-b border-gray-200">
         <div className="flex gap-1.5 overflow-x-auto px-4 py-2.5">
@@ -424,52 +473,11 @@ export default function AnalyticsPage({
             </div>
           </div>
 
-          <div>
-            <h2 className="font-display font-semibold text-ink text-sm mb-2">Carrying cost</h2>
-            <div className="border border-gray-200 rounded-lg p-3 mb-3">
-              <p className="text-xs text-steel mb-2">
-                Per-day holding cost, set separately for new and used — shown on every card. Change these
-                anytime; everyone sees the resulting dollar amount, only Owner and Manager can change the rate.
-              </p>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="block text-xs font-medium text-ink mb-1">New ($/day)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={newRateInput}
-                    onChange={(e) => setNewRateInput(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-ink mb-1">Used ($/day)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={usedRateInput}
-                    onChange={(e) => setUsedRateInput(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
-                  />
-                </div>
-              </div>
-              <button
-                onClick={handleSaveRates}
-                disabled={savingRates}
-                className="w-full bg-signal-blue text-white font-medium rounded-lg py-2.5 disabled:opacity-60"
-              >
-                {savingRates ? 'Saving…' : 'Save rates'}
-              </button>
-            </div>
-
-            <div className="bg-asphalt rounded-lg p-3">
-              <p className="text-2xl font-display font-bold text-ink tabular">
-                ${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </p>
-              <p className="text-xs text-steel">Total carrying cost across active inventory right now</p>
-            </div>
+          <div className="bg-asphalt rounded-lg p-3">
+            <p className="text-2xl font-display font-bold text-ink tabular">
+              ${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-xs text-steel">Total carrying cost across active inventory right now</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

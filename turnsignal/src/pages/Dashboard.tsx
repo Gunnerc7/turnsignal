@@ -27,6 +27,7 @@ export default function Dashboard() {
   const [nameOpen, setNameOpen] = useState(false);
   const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [boardRefreshKey, setBoardRefreshKey] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
@@ -214,7 +215,7 @@ export default function Dashboard() {
 
       {isOwner ? (
         viewingAsOwner ? (
-          <DealerBoard dealershipId={viewingAsOwner.id} isOwner isManager={isManager} />
+          <DealerBoard dealershipId={viewingAsOwner.id} isOwner isManager={isManager} refreshKey={boardRefreshKey} />
         ) : (
           <DealershipPicker onSelect={setViewingAsOwner} />
         )
@@ -226,7 +227,12 @@ export default function Dashboard() {
           </p>
         </div>
       ) : effectiveDealershipId ? (
-        <DealerBoard dealershipId={effectiveDealershipId} isOwner={false} isManager={effectiveIsManager} />
+        <DealerBoard
+          dealershipId={effectiveDealershipId}
+          isOwner={false}
+          isManager={effectiveIsManager}
+          refreshKey={boardRefreshKey}
+        />
       ) : (
         <p className="p-4 text-signal-red text-sm">
           This account isn't linked to a dealership yet.
@@ -264,7 +270,10 @@ export default function Dashboard() {
         <AnalyticsPage
           dealershipId={currentDealershipId}
           dealershipName={currentDealershipName ?? 'Dealership'}
-          onClose={() => setAnalyticsOpen(false)}
+          onClose={() => {
+            setAnalyticsOpen(false);
+            setBoardRefreshKey((k) => k + 1);
+          }}
         />
       )}
     </div>

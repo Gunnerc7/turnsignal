@@ -31,10 +31,12 @@ export default function DealerBoard({
   dealershipId,
   isOwner,
   isManager,
+  refreshKey,
 }: {
   dealershipId: string;
   isOwner: boolean;
   isManager: boolean;
+  refreshKey?: number;
 }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [boards, setBoards] = useState<BoardConfig[]>([]);
@@ -101,7 +103,7 @@ export default function DealerBoard({
     loadVehicles();
     loadBoards();
     loadThresholds();
-  }, [loadVehicles, loadBoards, loadThresholds]);
+  }, [loadVehicles, loadBoards, loadThresholds, refreshKey]);
 
   // If the currently selected tab no longer exists (e.g. it was just
   // deleted, or this is the first load), fall back to the first board.
