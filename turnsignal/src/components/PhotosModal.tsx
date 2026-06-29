@@ -26,6 +26,7 @@ export default function PhotosModal({
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewingPhoto, setViewingPhoto] = useState<Photo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function loadPhotos() {
@@ -43,28 +44,30 @@ export default function PhotosModal({
     loadPhotos();
   }, [vehicleId]);
 
-  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  async function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
     e.target.value = '';
-    if (!file) return;
+    if (!files || files.length === 0) return;
 
     setUploading(true);
     setError(null);
 
-    const path = `${dealershipId}/${vehicleId}/${Date.now()}-${file.name}`;
-    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file);
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const path = `${dealershipId}/${vehicleId}/${Date.now()}-${i}-${file.name}`;
+      const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file);
 
-    if (uploadError) {
-      setUploading(false);
-      setError(uploadError.message);
-      return;
+      if (uploadError) {
+        setError(uploadError.message);
+        continue; // keep trying the rest even if one fails
+      }
+
+      await supabase.from('vehicle_photos').insert({
+        vehicle_id: vehicleId,
+        storage_path: path,
+        uploaded_by_name: userName,
+      });
     }
-
-    await supabase.from('vehicle_photos').insert({
-      vehicle_id: vehicleId,
-      storage_path: path,
-      uploaded_by_name: userName,
-    });
 
     setUploading(false);
     loadPhotos();
@@ -76,6 +79,7 @@ export default function PhotosModal({
 
     await supabase.storage.from(BUCKET).remove([photo.storage_path]);
     await supabase.from('vehicle_photos').delete().eq('id', photo.id);
+    setViewingPhoto(null);
     loadPhotos();
   }
 
@@ -103,11 +107,13 @@ export default function PhotosModal({
             <div className="grid grid-cols-2 gap-2 mb-3">
               {photos.map((p) => (
                 <div key={p.id} className="relative">
-                  <img
-                    src={publicUrl(p.storage_path)}
-                    alt="Vehicle"
-                    className="w-full h-32 object-cover rounded-lg border border-gray-200"
-                  />
+                  <button onClick={() => setViewingPhoto(p)} className="block w-full">
+                    <img
+                      src={publicUrl(p.storage_path)}
+                      alt="Vehicle"
+                      className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                    />
+                  </button>
                   <button
                     onClick={() => handleDelete(p)}
                     aria-label="Delete photo"
@@ -127,8 +133,8 @@ export default function PhotosModal({
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
-            onChange={handleFileSelected}
+            multiple
+            onChange={handleFilesSelected}
             className="hidden"
           />
           <button
@@ -136,10 +142,40 @@ export default function PhotosModal({
             disabled={uploading}
             className="w-full bg-signal-blue text-white font-medium rounded-lg py-2.5 disabled:opacity-60"
           >
-            {uploading ? 'Uploading…' : '+ Add photo'}
+            {uploading ? 'Uploading…' : '+ Add photos'}
           </button>
+          <p className="text-center text-xs text-steel mt-1.5">
+            Tap a photo to view it larger. You can select more than one at once from your library.
+          </p>
         </div>
       </div>
+
+      {viewingPhoto && (
+        <div
+          className="fixed inset-0 bg-black z-50 flex flex-col"
+          onClick={() => setViewingPhoto(null)}
+        >
+          <div className="flex justify-end p-3">
+            <button
+              onClick={() => setViewingPhoto(null)}
+              aria-label="Close"
+              className="w-9 h-9 rounded-full bg-white/10 text-white text-lg flex items-center justify-center"
+            >
+              ✕
+            </button>
+          </div>
+          {/* overflow-auto + a slightly oversized image lets native pinch-to-zoom
+              and panning work — this is real browser zoom, not a fake CSS scale,
+              so it stays sharp at any zoom level. */}
+          <div className="flex-1 overflow-auto flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={publicUrl(viewingPhoto.storage_path)}
+              alt="Vehicle, enlarged"
+              className="max-w-none w-full h-auto"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
