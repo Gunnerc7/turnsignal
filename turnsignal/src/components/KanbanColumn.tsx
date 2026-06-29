@@ -11,6 +11,8 @@ export default function KanbanColumn({
   boards,
   yellowDays,
   redDays,
+  newRatePerDay,
+  usedRatePerDay,
   vehicles,
   onAddClick,
   onMoved,
@@ -20,6 +22,8 @@ export default function KanbanColumn({
   boards: BoardConfig[];
   yellowDays: number;
   redDays: number;
+  newRatePerDay: number;
+  usedRatePerDay: number;
   vehicles: Vehicle[];
   onAddClick: () => void;
   onMoved: () => void;
@@ -66,6 +70,8 @@ export default function KanbanColumn({
                     boards={boards}
                     yellowDays={yellowDays}
                     redDays={redDays}
+                    newRatePerDay={newRatePerDay}
+                    usedRatePerDay={usedRatePerDay}
                     onMoved={onMoved}
                   />
                 ))}
@@ -90,6 +96,8 @@ export default function KanbanColumn({
                         boards={boards}
                         yellowDays={yellowDays}
                         redDays={redDays}
+                        newRatePerDay={newRatePerDay}
+                        usedRatePerDay={usedRatePerDay}
                         onMoved={onMoved}
                       />
                     ))}

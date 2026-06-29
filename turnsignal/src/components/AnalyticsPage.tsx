@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { BoardConfig, fetchBoards } from '../lib/boards';
 import { isAgingRed } from '../lib/aging';
+import { carryingCostSoFar } from '../lib/dates';
 
 // ── Data layer ───────────────────────────────────────────────────────────
 // Fetching and stats computation are kept fully separate from rendering
@@ -57,6 +58,7 @@ type VehicleRow = {
   recon_started_at: string | null;
   completed: boolean;
   has_damage: boolean;
+  is_new: boolean;
   loaner_return_date: string | null;
   created_at: string;
   stock_number: string | null;
@@ -91,6 +93,11 @@ export default function AnalyticsPage({
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [yellowDays, setYellowDays] = useState(3);
   const [redDays, setRedDays] = useState(5);
+  const [newRatePerDay, setNewRatePerDay] = useState(0);
+  const [usedRatePerDay, setUsedRatePerDay] = useState(0);
+  const [newRateInput, setNewRateInput] = useState('0');
+  const [usedRateInput, setUsedRateInput] = useState('0');
+  const [savingRates, setSavingRates] = useState(false);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<RangeKey>('month');
   const [customStart, setCustomStart] = useState('');
@@ -106,14 +113,14 @@ export default function AnalyticsPage({
 
       const { data: dealershipData } = await supabase
         .from('dealerships')
-        .select('yellow_threshold_days, red_threshold_days')
+        .select('yellow_threshold_days, red_threshold_days, new_carrying_cost_per_day, used_carrying_cost_per_day')
         .eq('id', dealershipId)
         .single();
 
       const { data: vehiclesData } = await supabase
         .from('vehicles')
         .select(
-          'id, board, stage, stage_entered_at, recon_started_at, completed, has_damage, loaner_return_date, created_at, stock_number, year, make, model'
+          'id, board, stage, stage_entered_at, recon_started_at, completed, has_damage, is_new, loaner_return_date, created_at, stock_number, year, make, model'
         )
         .eq('dealership_id', dealershipId);
 
@@ -137,6 +144,12 @@ export default function AnalyticsPage({
         setHistory(historyData);
         setYellowDays(dealershipData?.yellow_threshold_days ?? 3);
         setRedDays(dealershipData?.red_threshold_days ?? 5);
+        const fetchedNewRate = dealershipData?.new_carrying_cost_per_day ?? 0;
+        const fetchedUsedRate = dealershipData?.used_carrying_cost_per_day ?? 0;
+        setNewRatePerDay(fetchedNewRate);
+        setUsedRatePerDay(fetchedUsedRate);
+        setNewRateInput(String(fetchedNewRate));
+        setUsedRateInput(String(fetchedUsedRate));
         setLoading(false);
       }
     }
@@ -146,6 +159,21 @@ export default function AnalyticsPage({
       cancelled = true;
     };
   }, [dealershipId]);
+
+  async function handleSaveRates() {
+    const newRate = parseFloat(newRateInput);
+    const usedRate = parseFloat(usedRateInput);
+    if (isNaN(newRate) || isNaN(usedRate) || newRate < 0 || usedRate < 0) return;
+
+    setSavingRates(true);
+    await supabase
+      .from('dealerships')
+      .update({ new_carrying_cost_per_day: newRate, used_carrying_cost_per_day: usedRate })
+      .eq('id', dealershipId);
+    setSavingRates(false);
+    setNewRatePerDay(newRate);
+    setUsedRatePerDay(usedRate);
+  }
 
   const stats = useMemo(() => {
     const { start: rangeStart, end: rangeEnd } = getRangeBounds(range, customStart, customEnd);
@@ -255,6 +283,12 @@ export default function AnalyticsPage({
     ).length;
     const mainBoardActive = vehicles.filter((v) => v.board === 'main' && !v.completed).length;
 
+    // Total carrying cost currently accrued across active inventory —
+    // a live number now that real rates exist, not a placeholder.
+    const totalCarryingCost = vehicles
+      .filter((v) => !v.completed)
+      .reduce((sum, v) => sum + carryingCostSoFar(v.created_at, v.is_new, newRatePerDay, usedRatePerDay), 0);
+
     // Currently aging red right now — a count, distinct from "longest
     // aging" which only shows the single worst case. Loaners are excluded
     // here automatically too, since isAgingRed treats that board as
@@ -282,9 +316,10 @@ export default function AnalyticsPage({
       overdueLoaners,
       mainBoardActive,
       agingRedCount,
+      totalCarryingCost,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicles, history, yellowDays, redDays, range, customStart, customEnd]);
+  }, [vehicles, history, yellowDays, redDays, newRatePerDay, usedRatePerDay, range, customStart, customEnd]);
 
   function bottleneckLabel(): string {
     if (!stats.bottleneck) return '—';
@@ -389,19 +424,51 @@ export default function AnalyticsPage({
             </div>
           </div>
 
-          {/* Reserved for floorplan/cost data once that calculation is ready —
-              intentionally placeholders, not faked numbers. */}
           <div>
-            <h2 className="font-display font-semibold text-ink text-sm mb-2">Cost (coming soon)</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="border border-dashed border-gray-300 rounded-lg p-3">
-                <p className="text-2xl font-display font-bold text-gray-300">—</p>
-                <p className="text-xs text-steel">Floorplan cost per day</p>
+            <h2 className="font-display font-semibold text-ink text-sm mb-2">Carrying cost</h2>
+            <div className="border border-gray-200 rounded-lg p-3 mb-3">
+              <p className="text-xs text-steel mb-2">
+                Per-day holding cost, set separately for new and used — shown on every card. Change these
+                anytime; everyone sees the resulting dollar amount, only Owner and Manager can change the rate.
+              </p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs font-medium text-ink mb-1">New ($/day)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newRateInput}
+                    onChange={(e) => setNewRateInput(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink mb-1">Used ($/day)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={usedRateInput}
+                    onChange={(e) => setUsedRateInput(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
+                  />
+                </div>
               </div>
-              <div className="border border-dashed border-gray-300 rounded-lg p-3">
-                <p className="text-2xl font-display font-bold text-gray-300">—</p>
-                <p className="text-xs text-steel">Avg. cost per vehicle</p>
-              </div>
+              <button
+                onClick={handleSaveRates}
+                disabled={savingRates}
+                className="w-full bg-signal-blue text-white font-medium rounded-lg py-2.5 disabled:opacity-60"
+              >
+                {savingRates ? 'Saving…' : 'Save rates'}
+              </button>
+            </div>
+
+            <div className="bg-asphalt rounded-lg p-3">
+              <p className="text-2xl font-display font-bold text-ink tabular">
+                ${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-steel">Total carrying cost across active inventory right now</p>
             </div>
           </div>
 

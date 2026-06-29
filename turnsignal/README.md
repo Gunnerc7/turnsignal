@@ -77,6 +77,7 @@ That starts it at http://localhost:5173
 - [x] Analytics headline renamed to "Turn Rate (Service → Price for Lot)" and recalculated to start from when a vehicle actually enters Service, not from Inbound — Inbound wait time (pickup/transit, out of the dealership's control) no longer counts toward it
 - [x] "Aging red right now" no longer counts the Loaners board — those vehicles are already on the lot, out with customers or managers, not stuck in recon
 - [x] Loaners board cards no longer show green/yellow/red color coding at all (still tracks and displays days, just neutral gray, same treatment Inbound already had) — shared aging logic now considers board, not just stage, so this can never drift out of sync between the cards and Analytics
+- [x] Carrying cost (holding cost) — every card now shows a running dollar total since the moment it was added, using separate per-day rates for new vs used (requires `supabase/carrying_cost_migration.sql`). Rates live in Analytics (Owner/Manager only to edit, visible to everyone), with a live "Total carrying cost across active inventory" stat alongside it. A "New vehicle" checkbox on the add/edit form defaults smartly off the model year (current year or one year back) but is always manually overridable. Bonus consistency fix: Aging Colors is now Owner+Manager too, matching how every other dealership-level setting already works — it was accidentally Owner-only before.
 - [x] Analytics: added "Added in this period," "Aging red right now" (a count, distinct from the single worst-case "longest aging"), and two clearly-marked placeholder cards reserved for floorplan cost data once that calculation is ready
 - [x] Visible, always-on horizontal scrollbar for the board area — fixes desktop windows that aren't maximized having no obvious way to scroll
 - [x] Completed vehicles now sink to the bottom of their column instead of sitting wherever their position value happens to place them
@@ -122,7 +123,7 @@ VALUES (
 ```
 
 That looks up the dealership by name, so this same snippet works for any dealership you've created — just change the name and the person's info.
-- [paused] VIN scan — built around photo + on-device text recognition, but real-world accuracy hasn't been reliable enough yet. Paused for now; manual VIN entry + the Decode button is the dependable path. The floating camera button is still in the app if you want to keep testing it, but no further tuning is planned right now.
+- [x] VIN scan — confirmed working end to end. The real bug turned out to be a crop-coordinate mismatch: the camera preview displays with `object-cover` (cropping the raw feed to fill the screen), but the photo capture was cropping based on the raw, uncropped frame instead of the on-screen displayed area — so the green guide box and the actual captured pixels were quietly misaligned, consistently losing the left side of the VIN. Fixed by computing the crop relative to the video's actual displayed bounding box. Combined with the NHTSA checksum validation above, this is now a reliable path, not a parked feature.
 
 ## Owner mode setup (one-time)
 

@@ -48,6 +48,8 @@ export default function DealerBoard({
   const [rolesOpen, setRolesOpen] = useState(false);
   const [yellowDays, setYellowDays] = useState(3);
   const [redDays, setRedDays] = useState(5);
+  const [newRatePerDay, setNewRatePerDay] = useState(0);
+  const [usedRatePerDay, setUsedRatePerDay] = useState(0);
   const [draggingVehicle, setDraggingVehicle] = useState<Vehicle | null>(null);
   // The stage a vehicle was in before the drag started — used at drop time
   // to know whether a real stage change happened (and stage history needs
@@ -86,11 +88,13 @@ export default function DealerBoard({
   const loadThresholds = useCallback(async () => {
     const { data } = await supabase
       .from('dealerships')
-      .select('yellow_threshold_days, red_threshold_days')
+      .select('yellow_threshold_days, red_threshold_days, new_carrying_cost_per_day, used_carrying_cost_per_day')
       .eq('id', dealershipId)
       .single();
     setYellowDays(data?.yellow_threshold_days ?? 3);
     setRedDays(data?.red_threshold_days ?? 5);
+    setNewRatePerDay(data?.new_carrying_cost_per_day ?? 0);
+    setUsedRatePerDay(data?.used_carrying_cost_per_day ?? 0);
   }, [dealershipId]);
 
   useEffect(() => {
@@ -205,17 +209,17 @@ export default function DealerBoard({
           </button>
         ))}
         {isOwner && (
-          <>
-            <button
-              onClick={() => setManageBoardsOpen(true)}
-              className="ml-1 text-steel text-sm whitespace-nowrap px-2"
-            >
-              ⚙ Manage
-            </button>
-            <button onClick={() => setSettingsOpen(true)} className="text-steel text-sm whitespace-nowrap px-2">
-              🎨 Aging colors
-            </button>
-          </>
+          <button
+            onClick={() => setManageBoardsOpen(true)}
+            className="ml-1 text-steel text-sm whitespace-nowrap px-2"
+          >
+            ⚙ Manage
+          </button>
+        )}
+        {(isOwner || isManager) && (
+          <button onClick={() => setSettingsOpen(true)} className="text-steel text-sm whitespace-nowrap px-2">
+            🎨 Aging colors
+          </button>
         )}
         {(isOwner || isManager) && (
           <button onClick={() => setRolesOpen(true)} className="text-steel text-sm whitespace-nowrap px-2">
@@ -238,6 +242,8 @@ export default function DealerBoard({
                   boards={boards}
                   yellowDays={yellowDays}
                   redDays={redDays}
+                  newRatePerDay={newRatePerDay}
+                  usedRatePerDay={usedRatePerDay}
                   vehicles={vehicles
                     .filter((v) => v.board === activeBoard.key && v.stage === stage.key)
                     .sort((a, b) => {
@@ -254,7 +260,15 @@ export default function DealerBoard({
           <DragOverlay dropAnimation={dropAnimation}>
             {draggingVehicle && (
               <div className="w-[86vw] sm:w-72 rotate-1 scale-105 shadow-lift rounded-xl">
-                <VehicleCard vehicle={draggingVehicle} boards={boards} yellowDays={yellowDays} redDays={redDays} onMoved={() => {}} />
+                <VehicleCard
+                  vehicle={draggingVehicle}
+                  boards={boards}
+                  yellowDays={yellowDays}
+                  redDays={redDays}
+                  newRatePerDay={newRatePerDay}
+                  usedRatePerDay={usedRatePerDay}
+                  onMoved={() => {}}
+                />
               </div>
             )}
           </DragOverlay>

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { decodeVin } from '../lib/vinDecode';
 import { createVehicle } from '../lib/createVehicle';
 import { extractVinFromImage } from '../lib/vinOcr';
+import { suggestIsNew } from '../lib/dates';
 import { BoardConfig } from '../lib/boards';
 import { Vehicle } from '../lib/types';
 import VinPhotoCapture from './VinPhotoCapture';
@@ -40,6 +41,8 @@ export default function AddVehicleModal({
   const [color, setColor] = useState(vehicle?.color ?? '');
   const [stockNumber, setStockNumber] = useState(vehicle?.stock_number ?? '');
   const [hasDamage, setHasDamage] = useState(vehicle?.has_damage ?? false);
+  const [isNew, setIsNew] = useState(vehicle?.is_new ?? suggestIsNew(vehicle?.year ?? null));
+  const isNewManuallySet = useRef(isEditing); // editing an existing vehicle never auto-overrides its flag
   const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : '');
   const [decoding, setDecoding] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -75,6 +78,9 @@ export default function AddVehicleModal({
     setMake(result.make);
     setModel(result.model);
     setTrim(result.trim);
+    if (!isNewManuallySet.current) {
+      setIsNew(suggestIsNew(result.year ?? null));
+    }
   }
 
   async function handlePhotoCapture(dataUrl: string) {
@@ -120,6 +126,7 @@ export default function AddVehicleModal({
       stock_number: stockNumber.trim() || null,
       mileage: mileage.trim() ? parseInt(mileage, 10) : null,
       has_damage: hasDamage,
+      is_new: isNew,
     };
 
     if (isEditing && vehicle) {
@@ -324,6 +331,20 @@ export default function AddVehicleModal({
               className="w-4 h-4"
             />
             <span className="text-sm font-medium text-ink">Has damage</span>
+          </label>
+
+          <label className="flex items-center gap-2 py-1">
+            <input
+              type="checkbox"
+              checked={isNew}
+              onChange={(e) => {
+                isNewManuallySet.current = true;
+                setIsNew(e.target.checked);
+              }}
+              className="w-4 h-4"
+            />
+            <span className="text-sm font-medium text-ink">New vehicle</span>
+            <span className="text-xs text-steel">(unchecked = used — affects holding cost)</span>
           </label>
 
           {error && <p className="text-signal-red text-sm">{error}</p>}

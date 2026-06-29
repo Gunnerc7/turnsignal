@@ -13,6 +13,7 @@ export type NewVehicleFields = {
   stock_number: string | null;
   mileage: number | null;
   has_damage: boolean;
+  is_new: boolean;
   createdByEmail: string | null;
   createdByName: string | null;
 };
@@ -39,6 +40,7 @@ export async function createVehicle(fields: NewVehicleFields) {
       stock_number: fields.stock_number,
       mileage: fields.mileage,
       has_damage: fields.has_damage,
+      is_new: fields.is_new,
       created_by_email: fields.createdByEmail,
       created_by_name: fields.createdByName,
     })

@@ -6,19 +6,11 @@ import { moveVehicleToStage } from '../lib/moveVehicle';
 import { supabase } from '../lib/supabase';
 import { BoardConfig } from '../lib/boards';
 import { getThresholds } from '../lib/aging';
+import { daysSince, carryingCostSoFar } from '../lib/dates';
 import NotesModal from './NotesModal';
 import StageTimelineModal from './StageTimelineModal';
 import AddVehicleModal from './AddVehicleModal';
 import PhotosModal from './PhotosModal';
-
-function daysSince(dateStr: string): number {
-  const entered = new Date(dateStr);
-  const enteredMidnight = new Date(entered.getFullYear(), entered.getMonth(), entered.getDate());
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
-  const diffMs = todayMidnight.getTime() - enteredMidnight.getTime();
-  return Math.round(diffMs / (1000 * 60 * 60 * 24));
-}
 
 function isOverdueLoaner(returnDate: string | null): boolean {
   if (!returnDate) return false;
@@ -60,12 +52,16 @@ export default function VehicleCard({
   boards,
   yellowDays,
   redDays,
+  newRatePerDay,
+  usedRatePerDay,
   onMoved,
 }: {
   vehicle: Vehicle;
   boards: BoardConfig[];
   yellowDays: number;
   redDays: number;
+  newRatePerDay: number;
+  usedRatePerDay: number;
   onMoved: () => void;
 }) {
   const { session, userName } = useAuth();
@@ -84,6 +80,7 @@ export default function VehicleCard({
   const days = daysSince(vehicle.recon_started_at ?? vehicle.stage_entered_at);
   const thresholds = getThresholds(vehicle.board, vehicle.stage, yellowDays, redDays);
   const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
+  const carryingCost = carryingCostSoFar(vehicle.created_at, vehicle.is_new, newRatePerDay, usedRatePerDay);
   const vehicleLabel = `${vehicle.stock_number ? vehicle.stock_number + '-' : ''}${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -256,6 +253,12 @@ export default function VehicleCard({
       {vehicle.has_damage && (
         <p className="mt-1.5 pl-7 inline-flex items-center gap-1 text-xs font-bold text-signal-red">
           ⚠ DAMAGE
+        </p>
+      )}
+
+      {carryingCost > 0 && (
+        <p className="mt-1.5 pl-7 text-xs font-bold text-ink tabular">
+          ${carryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })} holding cost
         </p>
       )}
 
