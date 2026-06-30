@@ -14,6 +14,8 @@ export type NewVehicleFields = {
   mileage: number | null;
   has_damage: boolean;
   is_new: boolean;
+  assigned_to_id: string | null;
+  assigned_to_name: string | null;
   createdByEmail: string | null;
   createdByName: string | null;
 };
@@ -41,6 +43,8 @@ export async function createVehicle(fields: NewVehicleFields) {
       mileage: fields.mileage,
       has_damage: fields.has_damage,
       is_new: fields.is_new,
+      assigned_to_id: fields.assigned_to_id,
+      assigned_to_name: fields.assigned_to_name,
       created_by_email: fields.createdByEmail,
       created_by_name: fields.createdByName,
     })

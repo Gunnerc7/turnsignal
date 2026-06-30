@@ -8,6 +8,7 @@ import AnalyticsPage from '../components/AnalyticsPage';
 import InviteTeammateModal from '../components/InviteTeammateModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import EditNameModal from '../components/EditNameModal';
+import NotificationBell from '../components/NotificationBell';
 
 type Profile = { dealership_id: string | null; role: string; dealership_role: string | null };
 type ViewingDealership = { id: string; name: string; group_id?: string | null };
@@ -41,7 +42,14 @@ export default function Dashboard() {
       .single();
 
     if (profileError || !data) {
-      setError("Couldn't load this account's profile.");
+      // PGRST116 specifically means "no row found" — for a profile lookup
+      // by your own logged-in user id, that means your access was removed
+      // (e.g. a Manager or Owner deleted your account), not a generic glitch.
+      if (profileError?.code === 'PGRST116') {
+        setError("Your access to TurnSignal has been removed. Contact your dealership's Owner or Manager if this seems wrong.");
+      } else {
+        setError("Couldn't load this account's profile.");
+      }
       setLoading(false);
       return;
     }
@@ -82,11 +90,11 @@ export default function Dashboard() {
   const isManager = profile.dealership_role === 'manager';
   const canAssignRoles = isOwner || isManager;
 
-  // A Manager only keeps Manager privileges (Roles button, etc.) on their
-  // own home store — viewing a sibling store in the group is full access,
-  // but not "I manage this one" access.
+  // Manager-level controls (Roles, Aging colors, removing teammates) now
+  // apply across the whole group, not just a Manager's own home store —
+  // this matches how full board access already works for sibling stores.
+  // viewingSiblingStore is still tracked, just for the "← My store" button.
   const viewingSiblingStore = isManager && viewingAsManager && viewingAsManager.id !== profile.dealership_id;
-  const effectiveIsManager = isManager && !viewingSiblingStore;
   const effectiveDealershipId = viewingAsManager ? viewingAsManager.id : profile.dealership_id;
   const effectiveDealershipName = viewingAsManager ? viewingAsManager.name : dealershipName;
 
@@ -133,6 +141,7 @@ export default function Dashboard() {
               🏢 Switch store
             </button>
           )}
+          <NotificationBell />
           <div className="relative">
             <button
               onClick={() => setMenuOpen((o) => !o)}
@@ -230,7 +239,7 @@ export default function Dashboard() {
         <DealerBoard
           dealershipId={effectiveDealershipId}
           isOwner={false}
-          isManager={effectiveIsManager}
+          isManager={isManager}
           refreshKey={boardRefreshKey}
         />
       ) : (

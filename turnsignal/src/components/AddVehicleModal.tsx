@@ -44,6 +44,8 @@ export default function AddVehicleModal({
   const [isNew, setIsNew] = useState(vehicle?.is_new ?? suggestIsNew(vehicle?.year ?? null));
   const isNewManuallySet = useRef(isEditing); // editing an existing vehicle never auto-overrides its flag
   const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : '');
+  const [assignedToId, setAssignedToId] = useState(vehicle?.assigned_to_id ?? '');
+  const [members, setMembers] = useState<{ id: string; label: string }[]>([]);
   const [decoding, setDecoding] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -63,6 +65,20 @@ export default function AddVehicleModal({
   useEffect(() => {
     if (autoScan) setCameraOpen(true);
   }, [autoScan]);
+
+  useEffect(() => {
+    supabase
+      .from('profiles')
+      .select('id, first_name, last_name, email')
+      .eq('dealership_id', dealershipId)
+      .then(({ data }) => {
+        const list = (data ?? []).map((m) => ({
+          id: m.id,
+          label: m.first_name ? `${m.first_name} ${m.last_name ?? ''}`.trim() : m.email,
+        }));
+        setMembers(list);
+      });
+  }, [dealershipId]);
 
   async function runDecode(vinToDecode: string) {
     setError(null);
@@ -116,6 +132,10 @@ export default function AddVehicleModal({
     setSaving(true);
     setError(null);
 
+    const previousAssignedToId = vehicle?.assigned_to_id ?? null;
+    const assignedMember = members.find((m) => m.id === assignedToId);
+    const isNewAssignment = assignedToId && assignedToId !== previousAssignedToId;
+
     const sharedFields = {
       vin: vin.trim() || null,
       year: year ? parseInt(year, 10) : null,
@@ -127,7 +147,21 @@ export default function AddVehicleModal({
       mileage: mileage.trim() ? parseInt(mileage, 10) : null,
       has_damage: hasDamage,
       is_new: isNew,
+      assigned_to_id: assignedToId || null,
+      assigned_to_name: assignedToId ? assignedMember?.label ?? null : null,
     };
+
+    const vehicleLabelForNotification = `${stockNumber.trim() ? stockNumber.trim() + '-' : ''}${year} ${make} ${model}`.trim();
+
+    async function notifyAssignee(vehicleId: string) {
+      if (!isNewAssignment) return;
+      await supabase.from('notifications').insert({
+        recipient_id: assignedToId,
+        dealership_id: dealershipId,
+        vehicle_id: vehicleId,
+        message: `${vehicleLabelForNotification} was assigned to you by ${userName ?? 'a teammate'}.`,
+      });
+    }
 
     if (isEditing && vehicle) {
       const { error: updateError } = await supabase
@@ -140,13 +174,14 @@ export default function AddVehicleModal({
         setError(updateError.message);
         return;
       }
+      await notifyAssignee(vehicle.id);
       onCreated();
       return;
     }
 
     const [finalBoard, finalStage] = needsBucketPicker ? destination.split('::') : [board!, stage!];
 
-    const { error: insertError } = await createVehicle({
+    const { created, error: insertError } = await createVehicle({
       dealershipId,
       board: finalBoard,
       stage: finalStage,
@@ -161,6 +196,7 @@ export default function AddVehicleModal({
       setError(insertError.message);
       return;
     }
+    if (created) await notifyAssignee(created.id);
     onCreated();
   }
 
@@ -346,6 +382,22 @@ export default function AddVehicleModal({
             <span className="text-sm font-medium text-ink">New vehicle</span>
             <span className="text-xs text-steel">(unchecked = used — affects holding cost)</span>
           </label>
+
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Assign to (optional)</label>
+            <select
+              value={assignedToId}
+              onChange={(e) => setAssignedToId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base bg-white"
+            >
+              <option value="">Unassigned</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {error && <p className="text-signal-red text-sm">{error}</p>}
 

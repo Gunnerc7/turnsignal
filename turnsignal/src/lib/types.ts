@@ -27,6 +27,18 @@ export type Vehicle = {
   has_damage: boolean;
   is_new: boolean;
   completed_at: string | null;
+  assigned_to_id: string | null;
+  assigned_to_name: string | null;
+};
+
+export type Notification = {
+  id: string;
+  recipient_id: string;
+  dealership_id: string;
+  vehicle_id: string | null;
+  message: string;
+  read: boolean;
+  created_at: string;
 };
 
 export type VehicleNote = {

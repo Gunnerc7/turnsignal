@@ -179,7 +179,7 @@ export default function VehicleCard({
       style={{
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
         transition,
-        opacity: isDragging ? 0.3 : vehicle.completed ? 0.6 : 1,
+        opacity: isDragging ? 0.3 : 1,
       }}
       className={`relative bg-white rounded-xl shadow-sm border border-gray-200 p-3.5 mb-3 pl-5 transition-opacity duration-150
         before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-xl ${ageStripe(days, thresholds)}`}
@@ -277,6 +277,9 @@ export default function VehicleCard({
         )}
         {(vehicle.created_by_name || vehicle.created_by_email) && (
           <p className="text-gray-400">Added by {vehicle.created_by_name ?? shortName(vehicle.created_by_email)}</p>
+        )}
+        {vehicle.assigned_to_name && (
+          <p className="text-ink font-medium">👤 Assigned: {vehicle.assigned_to_name}</p>
         )}
       </div>
 
