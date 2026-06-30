@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
-// The guide box is expressed as a fraction of the video frame — wide and
-// short, matching a single line of VIN text rather than a whole label.
-const GUIDE_WIDTH_FRACTION = 0.82;
-const GUIDE_HEIGHT_FRACTION = 0.14;
+// The guide box now covers a generous block of the frame, not a thin
+// single-line strip — pixel-perfect alignment to exactly one row was the
+// root cause of bad reads whenever framing was even slightly off. Wider
+// framing plus genuine multi-line OCR (see vinOcr.ts) means the system
+// finds the right row itself instead of requiring the user to isolate it.
+const GUIDE_WIDTH_FRACTION = 0.85;
+const GUIDE_HEIGHT_FRACTION = 0.45;
 
 export default function VinPhotoCapture({
   onCapture,
@@ -66,13 +69,10 @@ export default function VinPhotoCapture({
     ctx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 
     // Tesseract reads upscaled text more reliably than small source crops —
-    // this is a specifically documented accuracy factor for OCR engines.
-    // (We previously also applied a manual contrast boost here, but under
-    // strong lighting that can blow out highlights and crush shadows
-    // before Tesseract even sees the image — actively destroying detail
-    // rather than helping. Tesseract already does its own adaptive
-    // thresholding internally, so we let it handle that instead.)
-    const upscale = 2.5;
+    // a documented accuracy factor for OCR engines. Bumped higher than
+    // before since the capture region is now wider (more sticker, less
+    // detail per character at native resolution) to compensate.
+    const upscale = 3.2;
     const finalCanvas = document.createElement('canvas');
     finalCanvas.width = canvas.width * upscale;
     finalCanvas.height = canvas.height * upscale;
@@ -124,7 +124,7 @@ export default function VinPhotoCapture({
         className="text-center text-steel text-sm px-4 bg-black"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        Fit just the VIN line inside the green box, fill the frame, hold steady
+        Fit the whole VIN sticker in the box — we'll find the right row for you, fill the frame, hold steady
       </p>
     </div>
   );

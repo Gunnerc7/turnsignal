@@ -185,6 +185,7 @@ export default function AddVehicleModal({
       dealershipId,
       board: finalBoard,
       stage: finalStage,
+      createdById: session?.user.id ?? null,
       createdByEmail: session?.user.email ?? null,
       createdByName: userName,
       ...sharedFields,
@@ -236,9 +237,9 @@ export default function AddVehicleModal({
             <div className="flex gap-2">
               <input
                 value={vin}
-                onChange={(e) => setVin(e.target.value)}
+                onChange={(e) => setVin(e.target.value.toUpperCase())}
                 onFocus={scrollFieldIntoView}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base"
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base uppercase"
                 placeholder="17-character VIN"
                 maxLength={17}
               />
