@@ -11,6 +11,8 @@ import NotesModal from './NotesModal';
 import StageTimelineModal from './StageTimelineModal';
 import AddVehicleModal from './AddVehicleModal';
 import PhotosModal from './PhotosModal';
+import TitleStatusIcon, { titleStatusLabel } from './TitleStatusIcon';
+import TitleStatusModal from './TitleStatusModal';
 
 function isOverdueLoaner(returnDate: string | null): boolean {
   if (!returnDate) return false;
@@ -54,6 +56,8 @@ export default function VehicleCard({
   redDays,
   newRatePerDay,
   usedRatePerDay,
+  isOwner,
+  isManager,
   onMoved,
 }: {
   vehicle: Vehicle;
@@ -62,6 +66,8 @@ export default function VehicleCard({
   redDays: number;
   newRatePerDay: number;
   usedRatePerDay: number;
+  isOwner: boolean;
+  isManager: boolean;
   onMoved: () => void;
 }) {
   const { session, userName } = useAuth();
@@ -72,7 +78,9 @@ export default function VehicleCard({
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
+  const [titleStatusOpen, setTitleStatusOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const canEditTitleStatus = isOwner || isManager;
   // Once recon_started_at is set (the moment a vehicle first leaves Inbound),
   // the badge shows total time across every stage since then — it never
   // resets on a stage move. Still in Inbound with no anchor yet? Fall back
@@ -312,6 +320,25 @@ export default function VehicleCard({
             <path d="M2 12l3.5-3 2.5 2 2.5-3 3.5 4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
+
+        {canEditTitleStatus ? (
+          <button
+            onClick={() => setTitleStatusOpen(true)}
+            aria-label="Set title status"
+            title={titleStatusLabel(vehicle.title_status)}
+            className="bg-gray-50 rounded-md px-2.5 flex items-center justify-center"
+          >
+            <TitleStatusIcon status={vehicle.title_status} />
+          </button>
+        ) : (
+          <span
+            aria-label={`Title status: ${titleStatusLabel(vehicle.title_status)}`}
+            title={titleStatusLabel(vehicle.title_status)}
+            className="bg-gray-50 rounded-md px-2.5 flex items-center justify-center"
+          >
+            <TitleStatusIcon status={vehicle.title_status} />
+          </span>
+        )}
       </div>
 
       {(() => {
@@ -370,6 +397,16 @@ export default function VehicleCard({
           dealershipId={vehicle.dealership_id}
           vehicleLabel={vehicleLabel}
           onClose={() => setPhotosOpen(false)}
+        />
+      )}
+
+      {titleStatusOpen && (
+        <TitleStatusModal
+          vehicleId={vehicle.id}
+          vehicleLabel={vehicleLabel}
+          currentStatus={vehicle.title_status}
+          onClose={() => setTitleStatusOpen(false)}
+          onSaved={onMoved}
         />
       )}
 

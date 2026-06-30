@@ -246,6 +246,8 @@ export default function DealerBoard({
                   redDays={redDays}
                   newRatePerDay={newRatePerDay}
                   usedRatePerDay={usedRatePerDay}
+                  isOwner={isOwner}
+                  isManager={isManager}
                   vehicles={vehicles
                     .filter((v) => v.board === activeBoard.key && v.stage === stage.key)
                     .sort((a, b) => {
@@ -269,6 +271,8 @@ export default function DealerBoard({
                   redDays={redDays}
                   newRatePerDay={newRatePerDay}
                   usedRatePerDay={usedRatePerDay}
+                  isOwner={isOwner}
+                  isManager={isManager}
                   onMoved={() => {}}
                 />
               </div>

@@ -13,6 +13,8 @@ export default function KanbanColumn({
   redDays,
   newRatePerDay,
   usedRatePerDay,
+  isOwner,
+  isManager,
   vehicles,
   onAddClick,
   onMoved,
@@ -24,6 +26,8 @@ export default function KanbanColumn({
   redDays: number;
   newRatePerDay: number;
   usedRatePerDay: number;
+  isOwner: boolean;
+  isManager: boolean;
   vehicles: Vehicle[];
   onAddClick: () => void;
   onMoved: () => void;
@@ -72,6 +76,8 @@ export default function KanbanColumn({
                     redDays={redDays}
                     newRatePerDay={newRatePerDay}
                     usedRatePerDay={usedRatePerDay}
+                    isOwner={isOwner}
+                    isManager={isManager}
                     onMoved={onMoved}
                   />
                 ))}
@@ -98,6 +104,8 @@ export default function KanbanColumn({
                         redDays={redDays}
                         newRatePerDay={newRatePerDay}
                         usedRatePerDay={usedRatePerDay}
+                        isOwner={isOwner}
+                        isManager={isManager}
                         onMoved={onMoved}
                       />
                     ))}
