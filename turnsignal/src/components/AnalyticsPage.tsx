@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { BoardConfig, fetchBoards } from '../lib/boards';
 import { isAgingRed } from '../lib/aging';
@@ -66,6 +66,7 @@ type VehicleRow = {
   year: number | null;
   make: string | null;
   model: string | null;
+  completed_by_name: string | null;
 };
 
 type HistoryRow = {
@@ -101,15 +102,15 @@ export default function AnalyticsPage({
   const [savingRates, setSavingRates] = useState(false);
   const [showRateSettings, setShowRateSettings] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<RangeKey>('month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
+  const load = useCallback(
+    async (isInitial: boolean) => {
+      if (isInitial) setLoading(true);
+      else setRefreshing(true);
 
       const boardsData = await fetchBoards(dealershipId);
 
@@ -122,7 +123,7 @@ export default function AnalyticsPage({
       const { data: vehiclesData } = await supabase
         .from('vehicles')
         .select(
-          'id, board, stage, stage_entered_at, recon_started_at, completed, completed_at, has_damage, is_new, loaner_return_date, created_at, stock_number, year, make, model'
+          'id, board, stage, stage_entered_at, recon_started_at, completed, completed_at, has_damage, is_new, loaner_return_date, created_at, stock_number, year, make, model, completed_by_name'
         )
         .eq('dealership_id', dealershipId);
 
@@ -140,27 +141,37 @@ export default function AnalyticsPage({
         historyData = data ?? [];
       }
 
-      if (!cancelled) {
-        setBoards(boardsData);
-        setVehicles(vehiclesData ?? []);
-        setHistory(historyData);
-        setYellowDays(dealershipData?.yellow_threshold_days ?? 3);
-        setRedDays(dealershipData?.red_threshold_days ?? 5);
-        const fetchedNewRate = dealershipData?.new_carrying_cost_per_day ?? 0;
-        const fetchedUsedRate = dealershipData?.used_carrying_cost_per_day ?? 0;
-        setNewRatePerDay(fetchedNewRate);
-        setUsedRatePerDay(fetchedUsedRate);
-        setNewRateInput(String(fetchedNewRate));
-        setUsedRateInput(String(fetchedUsedRate));
-        setLoading(false);
-      }
-    }
+      setBoards(boardsData);
+      setVehicles(vehiclesData ?? []);
+      setHistory(historyData);
+      setYellowDays(dealershipData?.yellow_threshold_days ?? 3);
+      setRedDays(dealershipData?.red_threshold_days ?? 5);
+      const fetchedNewRate = dealershipData?.new_carrying_cost_per_day ?? 0;
+      const fetchedUsedRate = dealershipData?.used_carrying_cost_per_day ?? 0;
+      setNewRatePerDay(fetchedNewRate);
+      setUsedRatePerDay(fetchedUsedRate);
+      setNewRateInput(String(fetchedNewRate));
+      setUsedRateInput(String(fetchedUsedRate));
+      setLoading(false);
+      setRefreshing(false);
+    },
+    [dealershipId]
+  );
 
-    load();
-    return () => {
-      cancelled = true;
-    };
+  useEffect(() => {
+    load(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealershipId]);
+
+  // Pulling fresh data again whenever the selected range tab changes (not
+  // on every custom-date keystroke, just the tab itself) — this is what
+  // actually fixes the "feels stale" complaint: a range switch is treated
+  // as a deliberate request to look at current reality, not just a
+  // recompute against whatever happened to be loaded when the page opened.
+  useEffect(() => {
+    if (!loading) load(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range]);
 
   async function handleSaveRates() {
     const newRate = parseFloat(newRateInput);
@@ -263,9 +274,14 @@ export default function AnalyticsPage({
     const slowestTurn = turnTimes.length ? Math.max(...turnTimes) : null;
 
     // Longest-aging vehicle still active (not completed) right now.
+    // Loaners is excluded — those vehicles are already on the lot, out
+    // with a customer or manager, not stuck in recon, same reasoning as
+    // every other aging calculation on this page. Inbound is excluded for
+    // the same reason it always is: that wait is transit time, not
+    // something the dealership controls.
     const longestAging =
       vehicles
-        .filter((v) => !v.completed)
+        .filter((v) => !v.completed && v.board !== 'loaners' && v.stage !== 'inbound_trade_in')
         .map((v) => {
           const anchor = v.recon_started_at ?? v.stage_entered_at;
           const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
@@ -285,6 +301,27 @@ export default function AnalyticsPage({
       .filter((v) => !v.completed)
       .reduce((sum, v) => sum + carryingCostSoFar(v, newRatePerDay, usedRatePerDay), 0);
 
+    // Carrying cost specifically accrued DURING the selected period —
+    // different question from the live total above ("what's it costing
+    // us right now") versus this one ("what did holding inventory cost us
+    // this week/month"). Computed as the overlap between each vehicle's
+    // accrual window and the selected date range, so a vehicle that's
+    // been sitting since before the period only counts the portion of
+    // time that actually fell inside it.
+    const periodCarryingCost = vehicles
+      .filter((v) => v.board !== 'loaners')
+      .reduce((sum, v) => {
+        const startDate = v.is_new ? v.recon_started_at : v.created_at;
+        if (!startDate) return sum;
+        const accrualStart = new Date(startDate);
+        const accrualEnd = v.completed && v.completed_at ? new Date(v.completed_at) : new Date();
+        const overlapStart = rangeStart && rangeStart > accrualStart ? rangeStart : accrualStart;
+        const overlapEnd = rangeEnd < accrualEnd ? rangeEnd : accrualEnd;
+        const overlapDays = Math.max(0, (overlapEnd.getTime() - overlapStart.getTime()) / 86400000);
+        const rate = v.is_new ? newRatePerDay : usedRatePerDay;
+        return sum + overlapDays * rate;
+      }, 0);
+
     // Currently aging red right now — a count, distinct from "longest
     // aging" which only shows the single worst case. Loaners are excluded
     // here automatically too, since isAgingRed treats that board as
@@ -298,6 +335,26 @@ export default function AnalyticsPage({
 
     const addedInRange = vehicles.filter((v) => inRange(v.created_at)).length;
 
+    // Damage rate as a share of total inventory — more useful for
+    // tracking a trend over time than the raw count alone.
+    const damageRate = vehicles.length > 0 ? (damagedCount / vehicles.length) * 100 : null;
+
+    // Who's actually getting cars through, this period — a simple
+    // completions leaderboard. Deliberately just a count, not a claimed
+    // "performance" score: clicking complete isn't always exactly the
+    // same person who did every bit of the work, so this answers "who's
+    // closing out the most cars," not a stricter productivity claim.
+    const completionsByPerson = new Map<string, number>();
+    vehicles.forEach((v) => {
+      if (!v.completed || !v.completed_at || !inRange(v.completed_at)) return;
+      const name = v.completed_by_name ?? 'Unknown';
+      completionsByPerson.set(name, (completionsByPerson.get(name) ?? 0) + 1);
+    });
+    const topPerformers = Array.from(completionsByPerson.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
     return {
       currentCounts,
       avgDaysFor,
@@ -309,10 +366,13 @@ export default function AnalyticsPage({
       addedInRange,
       longestAging,
       damagedCount,
+      damageRate,
       overdueLoaners,
       mainBoardActive,
       agingRedCount,
       totalCarryingCost,
+      periodCarryingCost,
+      topPerformers,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vehicles, history, yellowDays, redDays, newRatePerDay, usedRatePerDay, range, customStart, customEnd]);
@@ -332,6 +392,14 @@ export default function AnalyticsPage({
           <h1 className="font-display text-lg font-semibold leading-tight">{dealershipName}</h1>
         </div>
         <div className="flex items-center gap-3">
+          {refreshing && <span className="text-xs text-mist">Refreshing…</span>}
+          <button
+            onClick={() => load(false)}
+            disabled={refreshing}
+            className="text-xs text-mist hover:text-white py-2 whitespace-nowrap disabled:opacity-50"
+          >
+            🔄 Refresh
+          </button>
           <button
             onClick={() => setShowRateSettings((s) => !s)}
             className="text-xs text-mist hover:text-white py-2 whitespace-nowrap"
@@ -456,7 +524,9 @@ export default function AnalyticsPage({
               >
                 {stats.damagedCount}
               </p>
-              <p className="text-xs text-steel">Flagged with damage</p>
+              <p className="text-xs text-steel">
+                Flagged with damage{stats.damageRate !== null && ` (${stats.damageRate.toFixed(0)}%)`}
+              </p>
             </div>
             <div className="bg-asphalt rounded-lg p-3">
               <p
@@ -468,11 +538,19 @@ export default function AnalyticsPage({
             </div>
           </div>
 
-          <div className="bg-asphalt rounded-lg p-3">
-            <p className="text-2xl font-display font-bold text-ink tabular">
-              ${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-xs text-steel">Total carrying cost across active inventory right now</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-asphalt rounded-lg p-3">
+              <p className="text-2xl font-display font-bold text-ink tabular">
+                ${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-steel">Total carrying cost right now</p>
+            </div>
+            <div className="bg-asphalt rounded-lg p-3">
+              <p className="text-2xl font-display font-bold text-ink tabular">
+                ${stats.periodCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-steel">Carrying cost added this period</p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -493,6 +571,23 @@ export default function AnalyticsPage({
               </p>
             </div>
           </div>
+
+          {stats.topPerformers.length > 0 && (
+            <div>
+              <h2 className="font-display font-semibold text-ink text-sm mb-2">Completions this period</h2>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                {stats.topPerformers.map((p, i) => (
+                  <div
+                    key={p.name}
+                    className={`flex items-center justify-between px-3 py-2 text-sm ${i > 0 ? 'border-t border-gray-100' : ''}`}
+                  >
+                    <span className="text-ink">{p.name}</span>
+                    <span className="tabular text-steel font-medium">{p.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {boards.map((board) => (
             <div key={board.id}>
