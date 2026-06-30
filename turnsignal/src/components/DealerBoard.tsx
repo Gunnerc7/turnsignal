@@ -197,7 +197,7 @@ export default function DealerBoard({
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 min-w-0">
       <nav className="flex items-center gap-1.5 overflow-x-auto px-4 py-2.5 bg-white border-b border-gray-200">
         {boards.map((b) => (
           <button
@@ -234,7 +234,7 @@ export default function DealerBoard({
 
       {activeBoard && (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-          <main ref={boardScrollRef} className="board-scroll flex-1 overflow-x-auto p-4">
+          <main ref={boardScrollRef} className="board-scroll flex-1 min-w-0 overflow-x-auto p-4">
             <div className="snap-row flex gap-4 h-full">
               {activeBoard.stages.map((stage) => (
                 <KanbanColumn
