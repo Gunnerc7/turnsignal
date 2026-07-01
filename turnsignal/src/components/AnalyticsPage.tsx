@@ -317,6 +317,47 @@ export default function AnalyticsPage({
       .filter((v) => !v.completed)
       .reduce((sum, v) => sum + carryingCostSoFar(v, newRatePerDay, usedRatePerDay), 0);
 
+    // Average carrying cost, split by new vs used — same underlying
+    // per-vehicle numbers behind totalCarryingCost above, just grouped so
+    // a manager can see whether new or used inventory is the bigger cost
+    // driver, rather than only a single blended total.
+    let newCostSum = 0, newCostCount = 0, usedCostSum = 0, usedCostCount = 0;
+    vehicles
+      .filter((v) => !v.completed)
+      .forEach((v) => {
+        const cost = carryingCostSoFar(v, newRatePerDay, usedRatePerDay);
+        if (v.board === 'loaners') return; // carryingCostSoFar already returns 0 for loaners; skip from the average too so it doesn't drag it down
+        if (v.is_new) { newCostSum += cost; newCostCount += 1; }
+        else { usedCostSum += cost; usedCostCount += 1; }
+      });
+    const avgNewCarryingCost = newCostCount > 0 ? newCostSum / newCostCount : null;
+    const avgUsedCarryingCost = usedCostCount > 0 ? usedCostSum / usedCostCount : null;
+
+    // Average transit time: Inbound/Trade-In → Service. Reuses the exact
+    // same serviceEnteredByVehicle map Turn Rate already builds above —
+    // this is the other half of the same handoff, just measuring the
+    // leg before Turn Rate's clock starts rather than after. Filtered by
+    // when the vehicle actually reached Service, same pattern as Turn
+    // Rate filtering on completion date.
+    const inboundEnteredByVehicle = new Map<string, Date>();
+    history.forEach((row) => {
+      if (row.stage !== 'inbound_trade_in') return;
+      const entered = new Date(row.entered_at);
+      const existing = inboundEnteredByVehicle.get(row.vehicle_id);
+      if (!existing || entered < existing) {
+        inboundEnteredByVehicle.set(row.vehicle_id, entered);
+      }
+    });
+    const transitTimes: number[] = [];
+    serviceEnteredByVehicle.forEach((serviceEntered, vehicleId) => {
+      if (!inRange(serviceEntered.toISOString())) return;
+      const inboundEntered = inboundEnteredByVehicle.get(vehicleId);
+      if (!inboundEntered) return;
+      const days = (serviceEntered.getTime() - inboundEntered.getTime()) / 86400000;
+      if (days >= 0) transitTimes.push(days);
+    });
+    const avgTransitTime = transitTimes.length ? transitTimes.reduce((a, b) => a + b, 0) / transitTimes.length : null;
+
     // Carrying cost specifically accrued DURING the selected period —
     // different question from the live total above ("what's it costing
     // us right now") versus this one ("what did holding inventory cost us
@@ -388,6 +429,9 @@ export default function AnalyticsPage({
       agingRedCount,
       totalCarryingCost,
       periodCarryingCost,
+      avgNewCarryingCost,
+      avgUsedCarryingCost,
+      avgTransitTime,
       topPerformers,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -448,6 +492,7 @@ export default function AnalyticsPage({
   <div class="hero-sub">TURN RATE (SERVICE → PRICE FOR LOT)</div>
   <div class="hero-num">${formatDays(stats.avgTurnTime)}</div>
   <div class="hero-sub">Fastest: ${formatDays(stats.fastestTurn)} &nbsp;&nbsp; Slowest: ${formatDays(stats.slowestTurn)}</div>
+  <div class="hero-sub" style="margin-top:8px;">AVG. TRANSIT TIME (INBOUND → SERVICE): ${formatDays(stats.avgTransitTime)}</div>
 </div>
 
 <div class="grid">
@@ -462,6 +507,11 @@ export default function AnalyticsPage({
 <div class="two">
   <div class="stat"><div class="stat-num">$${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div class="stat-label">Total carrying cost right now</div></div>
   <div class="stat"><div class="stat-num">$${stats.periodCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div class="stat-label">Carrying cost this period</div></div>
+</div>
+
+<div class="two">
+  <div class="stat"><div class="stat-num">${stats.avgNewCarryingCost !== null ? '$' + stats.avgNewCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</div><div class="stat-label">Avg. cost — new vehicles</div></div>
+  <div class="stat"><div class="stat-num">${stats.avgUsedCarryingCost !== null ? '$' + stats.avgUsedCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</div><div class="stat-label">Avg. cost — used vehicles</div></div>
 </div>
 
 <div class="two">
@@ -620,6 +670,10 @@ ${stats.topPerformers.length > 0 ? `
               <span>Fastest: {formatDays(stats.fastestTurn)}</span>
               <span>Slowest: {formatDays(stats.slowestTurn)}</span>
             </div>
+            <div className="mt-3 pt-3 border-t border-white/10">
+              <p className="text-xs text-mist uppercase tracking-wide mb-1">Avg. Transit Time (Inbound → Service)</p>
+              <p className="font-display text-xl font-semibold">{formatDays(stats.avgTransitTime)}</p>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -675,6 +729,25 @@ ${stats.topPerformers.length > 0 ? `
                 ${stats.periodCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </p>
               <p className="text-xs text-steel">Carrying cost added this period</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-asphalt rounded-lg p-3">
+              <p className="text-2xl font-display font-bold text-ink tabular">
+                {stats.avgNewCarryingCost !== null
+                  ? `$${stats.avgNewCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                  : '—'}
+              </p>
+              <p className="text-xs text-steel">Avg. cost — new vehicles</p>
+            </div>
+            <div className="bg-asphalt rounded-lg p-3">
+              <p className="text-2xl font-display font-bold text-ink tabular">
+                {stats.avgUsedCarryingCost !== null
+                  ? `$${stats.avgUsedCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                  : '—'}
+              </p>
+              <p className="text-xs text-steel">Avg. cost — used vehicles</p>
             </div>
           </div>
 
