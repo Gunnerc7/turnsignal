@@ -495,6 +495,8 @@ ${stats.topPerformers.length > 0 ? `
     // Brief delay so fonts/styles render before the print dialog opens
     setTimeout(() => { win.print(); }, 350);
   }
+
+  function bottleneckLabel(): string {
     if (!stats.bottleneck) return '—';
     const board = boards.find((b) => b.key === stats.bottleneck!.board);
     const stage = board?.stages.find((s) => s.key === stats.bottleneck!.stage);
