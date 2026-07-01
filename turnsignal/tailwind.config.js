@@ -22,6 +22,7 @@ export default {
       boxShadow: {
         glowAmber: '0 0 0 1px rgba(245,166,35,0.4), 0 0 12px rgba(245,166,35,0.45)',
         glowRed: '0 0 0 1px rgba(229,72,61,0.45), 0 0 14px rgba(229,72,61,0.5)',
+        glowGreen: '0 0 0 1px rgba(31,164,99,0.4), 0 0 10px rgba(31,164,99,0.45)',
         lift: '0 18px 30px -10px rgba(20,23,31,0.35)',
       },
     },

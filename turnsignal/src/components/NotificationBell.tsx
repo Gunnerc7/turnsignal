@@ -36,6 +36,23 @@ export default function NotificationBell() {
     loadNotifications();
   }, [session]);
 
+  // Real-time: new notifications arrive instantly in the bell without
+  // needing a manual refresh or page reload.
+  useEffect(() => {
+    if (!session) return;
+
+    const channel = supabase
+      .channel(`notifications-realtime-${session.user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${session.user.id}` },
+        () => { loadNotifications(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [session]);
+
   function handleOpen() {
     const nowOpen = !open;
     setOpen(nowOpen);

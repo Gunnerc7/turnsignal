@@ -120,6 +120,38 @@ export default function DealerBoard({
     boardScrollRef.current?.scrollTo({ left: 0 });
   }, [activeBoardKey]);
 
+  const [liveFlash, setLiveFlash] = useState(false);
+
+  // Real-time: whenever any vehicle in this dealership changes (moved,
+  // edited, added, deleted) re-fetch so every user sees the same board
+  // without needing to manually refresh. Debounced 300 ms so a rapid
+  // sequence of drag-and-drops (which each fire a DB write) coalesces
+  // into one reload rather than a storm.
+  useEffect(() => {
+    const debounceRef: { current: ReturnType<typeof setTimeout> | null } = { current: null };
+
+    const channel = supabase
+      .channel(`vehicles-realtime-${dealershipId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'vehicles', filter: `dealership_id=eq.${dealershipId}` },
+        () => {
+          if (debounceRef.current) clearTimeout(debounceRef.current);
+          debounceRef.current = setTimeout(() => {
+            loadVehicles();
+            setLiveFlash(true);
+            setTimeout(() => setLiveFlash(false), 1200);
+          }, 300);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      supabase.removeChannel(channel);
+    };
+  }, [dealershipId, loadVehicles]);
+
   function handleDragStart(event: DragStartEvent) {
     const vehicle = vehicles.find((v) => v.id === event.active.id);
     setDraggingVehicle(vehicle ?? null);
@@ -228,6 +260,13 @@ export default function DealerBoard({
             👤 Roles
           </button>
         )}
+        <span
+          title="Live"
+          className={`ml-auto w-2 h-2 rounded-full flex-shrink-0 transition-all duration-500 ${
+            liveFlash ? 'bg-signal-green shadow-glowGreen scale-125' : 'bg-signal-green opacity-60'
+          }`}
+          aria-label="Live updates active"
+        />
       </nav>
 
       {error && <p className="text-signal-red text-sm px-4 py-2">{error}</p>}

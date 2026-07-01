@@ -422,6 +422,12 @@ export default function AnalyticsPage({
           >
             💰 Rates
           </button>
+          <button
+            onClick={() => window.print()}
+            className="text-xs text-mist hover:text-white py-2 whitespace-nowrap"
+          >
+            ⬇ Export PDF
+          </button>
           <button onClick={onClose} className="text-sm font-semibold text-white bg-signal-blue rounded-full px-3 py-1.5 whitespace-nowrap">
             ← Main Board
           </button>
