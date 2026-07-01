@@ -74,7 +74,13 @@ export default function Dashboard() {
     }
 
     setLoading(false);
-  }, [session]);
+    // Deliberately keyed on the user's id, not the whole session object —
+    // a token refresh produces a new session object for the same person,
+    // and re-running this (with its setLoading(true) at the top) would
+    // wipe the entire board, including any open card, notes, or
+    // in-progress form, just because the tab regained focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user.id]);
 
   useEffect(() => {
     loadProfile();

@@ -36,18 +36,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let currentUserId: string | null = null;
+
     supabase.auth.getSession().then(({ data }) => {
+      currentUserId = data.session?.user.id ?? null;
       setSession(data.session);
       setLoading(false);
       if (data.session) loadUserName(data.session.user.id);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      if (newSession) {
-        loadUserName(newSession.user.id);
-      } else {
-        setUserName(null);
+    // Supabase re-checks the session — and re-fires this callback — every
+    // time the browser tab regains focus, even when nothing about the
+    // logged-in user has actually changed. Passing every one of those
+    // firings straight through to setSession() hands React a brand-new
+    // object reference each time, which cascades into Dashboard's
+    // profile-loading effect and briefly shows a full-page loading
+    // screen — unmounting whatever card, notes, or in-progress form was
+    // open underneath it. Only propagate an update when something real
+    // changed: signing out, signing in, or switching to a different user.
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+      const newUserId = newSession?.user.id ?? null;
+      if (event === 'SIGNED_OUT' || newUserId !== currentUserId) {
+        currentUserId = newUserId;
+        setSession(newSession);
+        if (newSession) {
+          loadUserName(newSession.user.id);
+        } else {
+          setUserName(null);
+        }
       }
     });
 
