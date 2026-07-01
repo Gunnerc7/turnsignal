@@ -198,7 +198,7 @@ export default function DealerBoard({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0">
-      <nav className="flex items-center gap-1.5 overflow-x-auto px-4 py-2.5 bg-white border-b border-gray-200">
+      <nav className="flex items-center gap-1.5 flex-wrap px-4 py-2.5 bg-white border-b border-gray-200">
         {boards.map((b) => (
           <button
             key={b.key}

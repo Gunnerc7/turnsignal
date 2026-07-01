@@ -10,10 +10,11 @@ import { carryingCostSoFar } from '../lib/dates';
 // chart component (recharts is the natural fit) can consume the exact same
 // shape without touching how it's calculated.
 
-type RangeKey = 'today' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
+type RangeKey = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
 
 const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
   { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
   { key: 'week', label: 'Week' },
   { key: 'month', label: 'Month' },
   { key: 'quarter', label: 'Quarter' },
@@ -34,8 +35,23 @@ function getRangeBounds(
     return { start, end };
   }
 
+  if (range === 'today') {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    return { start, end: now };
+  }
+
+  if (range === 'yesterday') {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 1);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(now);
+    end.setDate(end.getDate() - 1);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
   const start = new Date(now);
-  if (range === 'today') start.setHours(0, 0, 0, 0);
   if (range === 'week') start.setDate(start.getDate() - 7);
   if (range === 'month') start.setDate(start.getDate() - 30);
   if (range === 'quarter') start.setDate(start.getDate() - 91);
@@ -406,8 +422,8 @@ export default function AnalyticsPage({
           >
             💰 Rates
           </button>
-          <button onClick={onClose} className="text-sm text-mist hover:text-white py-2">
-            Close
+          <button onClick={onClose} className="text-sm font-semibold text-white bg-signal-blue rounded-full px-3 py-1.5 whitespace-nowrap">
+            ← Main Board
           </button>
         </div>
       </div>
