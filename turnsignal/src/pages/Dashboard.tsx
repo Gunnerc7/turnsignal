@@ -9,6 +9,7 @@ import InviteTeammateModal from '../components/InviteTeammateModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import EditNameModal from '../components/EditNameModal';
 import NotificationBell from '../components/NotificationBell';
+import { TurnSignalMark } from '../components/TurnSignalLogo';
 
 type Profile = { dealership_id: string | null; role: string; dealership_role: string | null };
 type ViewingDealership = { id: string; name: string; group_id?: string | null };
@@ -119,7 +120,7 @@ export default function Dashboard() {
     <div className="min-h-screen flex flex-col">
       <header className="bg-ink text-white px-4 py-3.5 flex items-center justify-between flex-wrap gap-y-2">
         <div className="flex items-center gap-2.5">
-          <span className="w-2 h-2 rounded-full bg-signal-amber shadow-glowAmber" aria-hidden="true" />
+          <TurnSignalMark size={28} />
           <div>
             <p className="text-[11px] text-mist uppercase tracking-wider leading-none">
               {isOwner ? 'Owner' : 'Dealership'}
