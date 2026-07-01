@@ -21,7 +21,12 @@ export default function Dashboard() {
   const [dealershipActive, setDealershipActive] = useState(true);
   const [dealershipGroupId, setDealershipGroupId] = useState<string | null>(null);
   const [viewingAsOwner, setViewingAsOwner] = useState<ViewingDealership | null>(null);
-  const [viewingAsManager, setViewingAsManager] = useState<ViewingDealership | null>(null);
+  const [viewingAsManager, setViewingAsManager] = useState<ViewingDealership | null>(() => {
+    try {
+      const raw = sessionStorage.getItem('ts-viewing-store');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -191,6 +196,7 @@ export default function Dashboard() {
                   {viewingSiblingStore && (
                     <button
                       onClick={() => {
+                        sessionStorage.removeItem('ts-viewing-store');
                         setViewingAsManager(null);
                         setMenuOpen(false);
                       }}
@@ -268,6 +274,7 @@ export default function Dashboard() {
             if (isOwner) {
               setViewingAsOwner({ ...store, group_id: relevantGroupId });
             } else {
+              sessionStorage.setItem('ts-viewing-store', JSON.stringify(store));
               setViewingAsManager(store);
             }
             setStorePickerOpen(false);

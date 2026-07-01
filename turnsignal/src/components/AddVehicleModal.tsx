@@ -16,6 +16,7 @@ export default function AddVehicleModal({
   stage,
   vehicle,
   autoScan,
+  restoreDraft = false,
   onClose,
   onCreated,
 }: {
@@ -25,6 +26,7 @@ export default function AddVehicleModal({
   stage?: string;
   vehicle?: Vehicle;
   autoScan?: boolean;
+  restoreDraft?: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -32,19 +34,30 @@ export default function AddVehicleModal({
   const isEditing = !!vehicle;
   const needsBucketPicker = !isEditing && !board && !stage;
 
-  const [destination, setDestination] = useState('');
-  const [vin, setVin] = useState(vehicle?.vin ?? '');
-  const [year, setYear] = useState(vehicle?.year != null ? String(vehicle.year) : '');
-  const [make, setMake] = useState(vehicle?.make ?? '');
-  const [model, setModel] = useState(vehicle?.model ?? '');
-  const [trim, setTrim] = useState(vehicle?.trim ?? '');
-  const [color, setColor] = useState(vehicle?.color ?? '');
-  const [stockNumber, setStockNumber] = useState(vehicle?.stock_number ?? '');
-  const [hasDamage, setHasDamage] = useState(vehicle?.has_damage ?? false);
-  const [isNew, setIsNew] = useState(vehicle?.is_new ?? suggestIsNew(vehicle?.year ?? null));
+  // Restore from sessionStorage draft if this was triggered by "Resume →"
+  const savedDraft = (() => {
+    if (!restoreDraft || isEditing) return null;
+    try {
+      const raw = sessionStorage.getItem('ts-add-draft');
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      return d.dealershipId === dealershipId ? d : null;
+    } catch { return null; }
+  })();
+
+  const [destination, setDestination] = useState(savedDraft?.destination ?? '');
+  const [vin, setVin] = useState(vehicle?.vin ?? savedDraft?.vin ?? '');
+  const [year, setYear] = useState(vehicle?.year != null ? String(vehicle.year) : (savedDraft?.year ?? ''));
+  const [make, setMake] = useState(vehicle?.make ?? savedDraft?.make ?? '');
+  const [model, setModel] = useState(vehicle?.model ?? savedDraft?.model ?? '');
+  const [trim, setTrim] = useState(vehicle?.trim ?? savedDraft?.trim ?? '');
+  const [color, setColor] = useState(vehicle?.color ?? savedDraft?.color ?? '');
+  const [stockNumber, setStockNumber] = useState(vehicle?.stock_number ?? savedDraft?.stockNumber ?? '');
+  const [hasDamage, setHasDamage] = useState(vehicle?.has_damage ?? savedDraft?.hasDamage ?? false);
+  const [isNew, setIsNew] = useState(vehicle?.is_new ?? savedDraft?.isNew ?? suggestIsNew(vehicle?.year ?? null));
   const isNewManuallySet = useRef(isEditing); // editing an existing vehicle never auto-overrides its flag
-  const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : '');
-  const [assignedToId, setAssignedToId] = useState(vehicle?.assigned_to_id ?? '');
+  const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : (savedDraft?.mileage ?? ''));
+  const [assignedToId, setAssignedToId] = useState(vehicle?.assigned_to_id ?? savedDraft?.assignedToId ?? '');
   const [members, setMembers] = useState<{ id: string; label: string }[]>([]);
   const [decoding, setDecoding] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -65,6 +78,19 @@ export default function AddVehicleModal({
   useEffect(() => {
     if (autoScan) setCameraOpen(true);
   }, [autoScan]);
+
+  // Auto-save a draft to sessionStorage whenever form fields change so a
+  // tab switch / iOS discard doesn't lose the user's work. Only runs for
+  // new vehicles, not edits (edits have a database record already).
+  useEffect(() => {
+    if (isEditing) return;
+    const hasAnyData = vin || stockNumber || year || make;
+    if (!hasAnyData) return;
+    sessionStorage.setItem('ts-add-draft', JSON.stringify({
+      dealershipId, destination, vin, year, make, model, trim,
+      color, stockNumber, hasDamage, isNew, mileage, assignedToId,
+    }));
+  }, [dealershipId, destination, vin, year, make, model, trim, color, stockNumber, hasDamage, isNew, mileage, assignedToId, isEditing]);
 
   useEffect(() => {
     supabase
@@ -175,6 +201,7 @@ export default function AddVehicleModal({
         return;
       }
       await notifyAssignee(vehicle.id);
+      sessionStorage.removeItem('ts-add-draft');
       onCreated();
       return;
     }
@@ -198,6 +225,7 @@ export default function AddVehicleModal({
       return;
     }
     if (created) await notifyAssignee(created.id);
+    sessionStorage.removeItem('ts-add-draft');
     onCreated();
   }
 

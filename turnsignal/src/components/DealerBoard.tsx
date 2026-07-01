@@ -40,7 +40,13 @@ export default function DealerBoard({
 }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [boards, setBoards] = useState<BoardConfig[]>([]);
-  const [activeBoardKey, setActiveBoardKey] = useState('main');
+  // Restore the last-active board from sessionStorage — this is what
+  // survives iOS Safari tab discards and comes back to the right column
+  // instead of defaulting to Main Board every time.
+  const [activeBoardKey, setActiveBoardKey] = useState(
+    () => sessionStorage.getItem(`ts-board-${dealershipId}`) ?? 'main'
+  );
+  const [hasDraft, setHasDraft] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addModal, setAddModal] = useState<{ board: string; stage: string } | null>(null);
@@ -117,8 +123,25 @@ export default function DealerBoard({
   // scrolled wherever the previous board happened to be, instead of always
   // starting at the first column.
   useEffect(() => {
+    sessionStorage.setItem(`ts-board-${dealershipId}`, activeBoardKey);
+  }, [activeBoardKey, dealershipId]);
+
+  useEffect(() => {
     boardScrollRef.current?.scrollTo({ left: 0 });
   }, [activeBoardKey]);
+
+  // Check for a saved add-vehicle draft from a previous session.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('ts-add-draft');
+      if (raw) {
+        const draft = JSON.parse(raw);
+        setHasDraft(draft.dealershipId === dealershipId);
+      }
+    } catch {
+      sessionStorage.removeItem('ts-add-draft');
+    }
+  }, [dealershipId]);
 
   const [liveFlash, setLiveFlash] = useState(false);
 
@@ -349,15 +372,40 @@ export default function DealerBoard({
         />
       )}
 
+      {hasDraft && !addModal && (
+        <div className="flex items-center justify-between px-4 py-2 bg-signal-amber/10 border-b border-signal-amber/30 text-sm">
+          <span className="text-ink">You have an unsaved vehicle draft.</span>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                sessionStorage.removeItem('ts-add-draft');
+                setHasDraft(false);
+              }}
+              className="text-steel"
+            >
+              Discard
+            </button>
+            <button
+              onClick={() => setAddModal({ board: 'main', stage: 'inbound_trade_in', restoreDraft: true } as any)}
+              className="font-semibold text-signal-blue"
+            >
+              Resume →
+            </button>
+          </div>
+        </div>
+      )}
+
       {addModal && (
         <AddVehicleModal
           dealershipId={dealershipId}
           boards={boards}
-          board={addModal.board}
-          stage={addModal.stage}
+          board={(addModal as any).board}
+          stage={(addModal as any).stage}
+          restoreDraft={(addModal as any).restoreDraft ?? false}
           onClose={() => setAddModal(null)}
           onCreated={() => {
             setAddModal(null);
+            setHasDraft(false);
             loadVehicles();
           }}
         />
