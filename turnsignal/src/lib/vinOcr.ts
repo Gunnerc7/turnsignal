@@ -69,7 +69,11 @@ async function recognizeLines(imageDataUrl: string, mode: PSM): Promise<string[]
   return (result.data.text ?? '').split(/\r?\n/).filter((l) => l.trim().length > 0);
 }
 
-export async function extractVinFromImage(
+// On-device OCR (Tesseract.js) — kept as a fallback for whenever the
+// cloud path fails (offline, function not deployed yet, quota issue,
+// etc.) so scanning never fully breaks even if the cloud call can't
+// complete.
+export async function extractVinFromImageLocally(
   imageDataUrl: string
 ): Promise<{ vin: string | null; verified: boolean }> {
   const allCandidates: string[] = [];
@@ -106,4 +110,37 @@ export async function extractVinFromImage(
   // stray characters — a 3-4 character fragment is worse than no read at
   // all, since it looks like a real answer but isn't one.
   return { vin: null, verified: false };
+}
+
+// The new primary entry point everything should call. Tries the Google
+// Cloud Vision-backed serverless function first (meaningfully more
+// reliable in inconsistent real-world lighting than on-device OCR can
+// ever be), and only falls back to Tesseract if that call itself fails
+// outright — a network issue, the function not being live yet, etc.
+// A cloud response that legitimately found nothing is trusted as-is
+// rather than second-guessed with a local re-scan, since Cloud Vision is
+// the more accurate reader of the two.
+export async function scanVin(
+  imageDataUrl: string
+): Promise<{ vin: string | null; verified: boolean; source: 'cloud' | 'local' }> {
+  try {
+    const response = await fetch('/api/scan-vin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageDataUrl }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (!data.error) {
+        return { vin: data.vin ?? null, verified: !!data.verified, source: 'cloud' };
+      }
+    }
+  } catch {
+    // Network error, function not deployed, etc. — fall through to the
+    // on-device path below rather than surfacing a dead end.
+  }
+
+  const local = await extractVinFromImageLocally(imageDataUrl);
+  return { ...local, source: 'local' };
 }

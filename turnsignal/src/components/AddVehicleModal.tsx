@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { decodeVin } from '../lib/vinDecode';
 import { createVehicle } from '../lib/createVehicle';
-import { extractVinFromImage } from '../lib/vinOcr';
+import { scanVin } from '../lib/vinOcr';
 import { suggestIsNew } from '../lib/dates';
 import { BoardConfig } from '../lib/boards';
 import { Vehicle } from '../lib/types';
@@ -130,7 +130,7 @@ export default function AddVehicleModal({
     setScanning(true);
     setError(null);
 
-    const { vin: detected, verified } = await extractVinFromImage(dataUrl);
+    const { vin: detected, verified } = await scanVin(dataUrl);
     setScanning(false);
 
     if (!detected) {
