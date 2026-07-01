@@ -393,7 +393,108 @@ export default function AnalyticsPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vehicles, history, yellowDays, redDays, newRatePerDay, usedRatePerDay, range, customStart, customEnd]);
 
-  function bottleneckLabel(): string {
+  function handleExportPDF() {
+    const rangeLabel = RANGE_OPTIONS.find((r) => r.key === range)?.label ?? range;
+    const now = new Date().toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
+
+    const stageRows = boards
+      .flatMap((board) =>
+        board.stages.map((stage) => {
+          const count = stats.currentCounts.get(`${board.key}::${stage.key}`) ?? 0;
+          const avg = stats.avgDaysFor(board.key, stage.key);
+          return `<tr>
+            <td style="padding:6px 10px;border-top:1px solid #e5e7eb;">${board.label} — ${stage.label}</td>
+            <td style="padding:6px 10px;border-top:1px solid #e5e7eb;text-align:center;">${count}</td>
+            <td style="padding:6px 10px;border-top:1px solid #e5e7eb;text-align:right;">${avg !== null ? avg.toFixed(1) + ' days' : '—'}</td>
+          </tr>`;
+        })
+      )
+      .join('');
+
+    const performerRows = stats.topPerformers
+      .map((p) => `<tr><td style="padding:5px 10px;border-top:1px solid #e5e7eb;">${p.name}</td><td style="padding:5px 10px;border-top:1px solid #e5e7eb;text-align:right;">${p.count}</td></tr>`)
+      .join('');
+
+    const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8"/>
+<title>TurnSignal Analytics — ${dealershipName}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 32px 40px; color: #14171F; font-size: 13px; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 2px; }
+  .sub { color: #3A4150; margin: 0 0 24px; font-size: 12px; }
+  .hero { background: #14171F; color: white; border-radius: 10px; padding: 18px 20px; margin-bottom: 20px; }
+  .hero-num { font-size: 32px; font-weight: 700; margin: 4px 0; }
+  .hero-sub { font-size: 11px; color: #B8BFCC; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  .stat { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; }
+  .stat-num { font-size: 24px; font-weight: 700; }
+  .stat-label { font-size: 11px; color: #3A4150; margin-top: 2px; }
+  .red { color: #E5483D; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #3A4150; padding: 6px 10px; background: #f3f4f6; }
+  th:not(:first-child) { text-align: right; }
+  h2 { font-size: 13px; font-weight: 600; margin: 20px 0 6px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  .callout { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; }
+  .callout-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #3A4150; margin-bottom: 4px; }
+  @page { margin: 16mm 14mm; }
+</style>
+</head><body>
+<h1>${dealershipName}</h1>
+<p class="sub">Analytics · ${rangeLabel} · Exported ${now}</p>
+
+<div class="hero">
+  <div class="hero-sub">TURN RATE (SERVICE → PRICE FOR LOT)</div>
+  <div class="hero-num">${formatDays(stats.avgTurnTime)}</div>
+  <div class="hero-sub">Fastest: ${formatDays(stats.fastestTurn)} &nbsp;&nbsp; Slowest: ${formatDays(stats.slowestTurn)}</div>
+</div>
+
+<div class="grid">
+  <div class="stat"><div class="stat-num">${stats.mainBoardActive}</div><div class="stat-label">Active on Main Board</div></div>
+  <div class="stat"><div class="stat-num">${stats.addedInRange}</div><div class="stat-label">Added this period</div></div>
+  <div class="stat"><div class="stat-num">${stats.completedInRange}</div><div class="stat-label">Completed this period</div></div>
+  <div class="stat"><div class="stat-num${stats.agingRedCount > 0 ? ' red' : ''}">${stats.agingRedCount}</div><div class="stat-label">Aging red right now</div></div>
+  <div class="stat"><div class="stat-num${stats.damagedCount > 0 ? ' red' : ''}">${stats.damagedCount}${stats.damageRate !== null ? ` <span style="font-size:14px;font-weight:400;">(${stats.damageRate.toFixed(0)}%)</span>` : ''}</div><div class="stat-label">Flagged with damage</div></div>
+  <div class="stat"><div class="stat-num${stats.overdueLoaners > 0 ? ' red' : ''}">${stats.overdueLoaners}</div><div class="stat-label">Loaners overdue</div></div>
+</div>
+
+<div class="two">
+  <div class="stat"><div class="stat-num">$${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div class="stat-label">Total carrying cost right now</div></div>
+  <div class="stat"><div class="stat-num">$${stats.periodCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div class="stat-label">Carrying cost this period</div></div>
+</div>
+
+<div class="two">
+  <div class="callout"><div class="callout-label">Bottleneck stage</div><div style="font-weight:600;">${bottleneckLabel()}</div><div style="font-size:11px;color:#3A4150;">${stats.bottleneck ? formatDays(stats.bottleneck.avgDays) + ' average' : '—'}</div></div>
+  <div class="callout"><div class="callout-label">Longest aging, active now</div><div style="font-weight:600;">${stats.longestAging?.label || 'None'}</div><div style="font-size:11px;color:#3A4150;">${stats.longestAging ? formatDays(stats.longestAging.days) : '—'}</div></div>
+</div>
+
+<h2>Stage breakdown</h2>
+<table>
+  <thead><tr><th>Stage</th><th style="text-align:center;">Now</th><th style="text-align:right;">Avg. time</th></tr></thead>
+  <tbody>${stageRows}</tbody>
+</table>
+
+${stats.topPerformers.length > 0 ? `
+<h2>Completions this period</h2>
+<table>
+  <thead><tr><th>Person</th><th style="text-align:right;">Completed</th></tr></thead>
+  <tbody>${performerRows}</tbody>
+</table>` : ''}
+
+<p style="font-size:10px;color:#9ca3af;margin-top:32px;">Generated by TurnSignal</p>
+</body></html>`;
+
+    const win = window.open('', '_blank', 'width=800,height=600');
+    if (!win) {
+      alert('Allow pop-ups for this site to export PDF.');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+    // Brief delay so fonts/styles render before the print dialog opens
+    setTimeout(() => { win.print(); }, 350);
+  }
     if (!stats.bottleneck) return '—';
     const board = boards.find((b) => b.key === stats.bottleneck!.board);
     const stage = board?.stages.find((s) => s.key === stats.bottleneck!.stage);
@@ -423,7 +524,7 @@ export default function AnalyticsPage({
             💰 Rates
           </button>
           <button
-            onClick={() => window.print()}
+            onClick={handleExportPDF}
             className="text-xs text-mist hover:text-white py-2 whitespace-nowrap"
           >
             ⬇ Export PDF
