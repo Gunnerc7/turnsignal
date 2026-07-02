@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import TitleStatusIcon from './TitleStatusIcon';
+import ModalCloseButton from './ModalCloseButton';
 
 type TitleStatus = 'has_title' | 'poa' | 'waiting' | null;
 
@@ -48,9 +49,7 @@ export default function TitleStatusModal({
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5">
         <div className="flex items-center justify-between mb-1">
           <h2 className="font-display text-lg font-semibold text-ink">Title status</h2>
-          <button onClick={onClose} className="text-steel text-sm py-2">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <p className="text-xs text-steel mb-4">{vehicleLabel}</p>
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
+import ModalCloseButton from './ModalCloseButton';
 import { VehicleNote } from '../lib/types';
 
 function formatNoteDate(dateStr: string): string {
@@ -91,9 +92,7 @@ export default function NotesModal({
             <h2 className="font-display text-base font-semibold text-ink">Notes</h2>
             <p className="text-xs text-steel">{vehicleLabel}</p>
           </div>
-          <button onClick={onClose} className="text-steel text-sm py-2">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">

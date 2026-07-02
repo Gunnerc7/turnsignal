@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
+import ModalCloseButton from './ModalCloseButton';
 
 const ROLE_OPTIONS = ['manager', 'sales', 'service', 'detail', 'photo'];
 
@@ -81,9 +82,7 @@ export default function TeamRolesModal({
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <h2 className="font-display text-lg font-semibold text-ink">Team roles</h2>
-          <button onClick={onClose} className="text-steel text-sm py-2">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">

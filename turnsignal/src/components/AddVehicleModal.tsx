@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext';
 import { decodeVin } from '../lib/vinDecode';
 import { createVehicle } from '../lib/createVehicle';
 import { scanVin } from '../lib/vinOcr';
+import ModalCloseButton from './ModalCloseButton';
 import { suggestIsNew } from '../lib/dates';
 import { BoardConfig } from '../lib/boards';
 import { Vehicle } from '../lib/types';
@@ -16,6 +17,7 @@ export default function AddVehicleModal({
   stage,
   vehicle,
   autoScan,
+  initialVin,
   restoreDraft = false,
   onClose,
   onCreated,
@@ -26,6 +28,7 @@ export default function AddVehicleModal({
   stage?: string;
   vehicle?: Vehicle;
   autoScan?: boolean;
+  initialVin?: string;
   restoreDraft?: boolean;
   onClose: () => void;
   onCreated: () => void;
@@ -46,7 +49,7 @@ export default function AddVehicleModal({
   })();
 
   const [destination, setDestination] = useState(savedDraft?.destination ?? '');
-  const [vin, setVin] = useState(vehicle?.vin ?? savedDraft?.vin ?? '');
+  const [vin, setVin] = useState(vehicle?.vin ?? initialVin ?? savedDraft?.vin ?? '');
   const [year, setYear] = useState(vehicle?.year != null ? String(vehicle.year) : (savedDraft?.year ?? ''));
   const [make, setMake] = useState(vehicle?.make ?? savedDraft?.make ?? '');
   const [model, setModel] = useState(vehicle?.model ?? savedDraft?.model ?? '');
@@ -78,6 +81,16 @@ export default function AddVehicleModal({
   useEffect(() => {
     if (autoScan) setCameraOpen(true);
   }, [autoScan]);
+
+  // A VIN handed in already (e.g. from the scan-to-move flow finding no
+  // existing match) has already been confirmed by a scan — decode it
+  // immediately instead of making the person scan or type it again.
+  useEffect(() => {
+    if (initialVin && !isEditing) {
+      runDecode(initialVin);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-save a draft to sessionStorage whenever form fields change so a
   // tab switch / iOS discard doesn't lose the user's work. Only runs for
@@ -254,9 +267,7 @@ export default function AddVehicleModal({
           <h2 className="font-display text-lg font-semibold text-ink">
             {isEditing ? 'Edit vehicle' : 'Add vehicle'}
           </h2>
-          <button onClick={onClose} className="text-steel text-sm">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         <div className="space-y-3">

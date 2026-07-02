@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import ModalCloseButton from './ModalCloseButton';
 
 export default function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const [password, setPassword] = useState('');
@@ -35,9 +36,7 @@ export default function ChangePasswordModal({ onClose }: { onClose: () => void }
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-lg font-semibold text-ink">Change password</h2>
-          <button onClick={onClose} className="text-steel text-sm">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         {done ? (

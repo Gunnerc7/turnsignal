@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
+import ModalCloseButton from './ModalCloseButton';
 
 type Photo = { id: string; storage_path: string; uploaded_by_name: string | null };
 
@@ -96,9 +97,7 @@ export default function PhotosModal({
             <h2 className="font-display text-base font-semibold text-ink">Photos</h2>
             <p className="text-xs text-steel">{vehicleLabel}</p>
           </div>
-          <button onClick={onClose} className="text-steel text-sm py-2">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">

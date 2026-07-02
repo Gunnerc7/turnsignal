@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
+import ModalCloseButton from './ModalCloseButton';
 
 export default function EditNameModal({ onClose }: { onClose: () => void }) {
   const { session, refreshUserName } = useAuth();
@@ -51,9 +52,7 @@ export default function EditNameModal({ onClose }: { onClose: () => void }) {
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-lg font-semibold text-ink">Your name</h2>
-          <button onClick={onClose} className="text-steel text-sm">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         {loading ? (

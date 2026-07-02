@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Dealership, Group } from './DealershipPicker';
+import ModalCloseButton from './ModalCloseButton';
 
 export default function GroupMembersModal({
   group,
@@ -54,9 +55,7 @@ export default function GroupMembersModal({
               </button>
             </>
           )}
-          <button onClick={onClose} className="text-steel text-sm py-2 flex-shrink-0">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">

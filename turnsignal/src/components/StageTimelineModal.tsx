@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { StageHistoryRow } from '../lib/types';
 import { BoardConfig, getBoard } from '../lib/boards';
+import ModalCloseButton from './ModalCloseButton';
 
 function durationLabel(enteredAt: string, exitedAt: string | null): string {
   const start = new Date(enteredAt).getTime();
@@ -69,9 +70,7 @@ export default function StageTimelineModal({
             <h2 className="font-display text-base font-semibold text-ink">Timeline</h2>
             <p className="text-xs text-steel">{vehicleLabel}</p>
           </div>
-          <button onClick={onClose} className="text-steel text-sm py-2">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">

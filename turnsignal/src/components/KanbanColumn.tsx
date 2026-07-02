@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { BoardConfig } from '../lib/boards';
@@ -16,6 +16,7 @@ export default function KanbanColumn({
   isOwner,
   isManager,
   vehicles,
+  highlightedVehicleId,
   onAddClick,
   onMoved,
 }: {
@@ -29,6 +30,7 @@ export default function KanbanColumn({
   isOwner: boolean;
   isManager: boolean;
   vehicles: Vehicle[];
+  highlightedVehicleId?: string | null;
   onAddClick: () => void;
   onMoved: () => void;
 }) {
@@ -37,6 +39,16 @@ export default function KanbanColumn({
 
   const activeVehicles = vehicles.filter((v) => !v.completed);
   const completedVehicles = vehicles.filter((v) => v.completed);
+
+  // A search result can land on a vehicle that's currently tucked inside
+  // the collapsed "Completed (N)" summary — auto-expand it so the result
+  // is actually visible instead of pointing at a hidden row.
+  useEffect(() => {
+    if (highlightedVehicleId && completedVehicles.some((v) => v.id === highlightedVehicleId)) {
+      setShowCompleted(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightedVehicleId]);
 
   return (
     <div
@@ -78,6 +90,7 @@ export default function KanbanColumn({
                     usedRatePerDay={usedRatePerDay}
                     isOwner={isOwner}
                     isManager={isManager}
+                    highlighted={v.id === highlightedVehicleId}
                     onMoved={onMoved}
                   />
                 ))}
@@ -106,6 +119,7 @@ export default function KanbanColumn({
                         usedRatePerDay={usedRatePerDay}
                         isOwner={isOwner}
                         isManager={isManager}
+                        highlighted={v.id === highlightedVehicleId}
                         onMoved={onMoved}
                       />
                     ))}

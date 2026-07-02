@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import ModalCloseButton from './ModalCloseButton';
 
 const ROLE_OPTIONS = ['manager', 'sales', 'service', 'detail', 'photo'];
 
@@ -42,9 +43,7 @@ export default function InviteTeammateModal({
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-lg font-semibold text-ink">Invite a teammate</h2>
-          <button onClick={onClose} className="text-steel text-sm">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         {done ? (

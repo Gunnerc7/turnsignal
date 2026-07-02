@@ -20,6 +20,7 @@ import VehicleCard from './VehicleCard';
 import ManageBoardsModal from './ManageBoardsModal';
 import DealershipSettingsModal from './DealershipSettingsModal';
 import TeamRolesModal from './TeamRolesModal';
+import ScanToMoveModal from './ScanToMoveModal';
 
 const dropAnimation = {
   duration: 220,
@@ -49,7 +50,9 @@ export default function DealerBoard({
   const [hasDraft, setHasDraft] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [addModal, setAddModal] = useState<{ board: string; stage: string } | null>(null);
+  const [addModal, setAddModal] = useState<
+    { board: string; stage: string; restoreDraft?: boolean; initialVin?: string } | null
+  >(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [manageBoardsOpen, setManageBoardsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -64,6 +67,69 @@ export default function DealerBoard({
   // updating), separate from whatever it's been previewed into mid-drag.
   const dragOriginStage = useRef<string | null>(null);
   const boardScrollRef = useRef<HTMLDivElement>(null);
+
+  // ── Search ────────────────────────────────────────────────────────────
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedVehicleId, setHighlightedVehicleId] = useState<string | null>(null);
+  const pendingScrollVehicleId = useRef<string | null>(null);
+
+  function scrollToAndHighlight(vehicleId: string) {
+    setHighlightedVehicleId(vehicleId);
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`vehicle-card-${vehicleId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    });
+    setTimeout(() => {
+      setHighlightedVehicleId((current) => (current === vehicleId ? null : current));
+    }, 2500);
+  }
+
+  function handleSearchSelect(vehicle: Vehicle) {
+    setSearchQuery('');
+    setSearchOpen(false);
+    if (vehicle.board !== activeBoardKey) {
+      // Switching tabs unmounts the current board's DOM and mounts the
+      // target one — the scroll/highlight has to wait for that to finish,
+      // so it's queued here and picked up by the effect below once the
+      // new board's columns actually exist to scroll to.
+      pendingScrollVehicleId.current = vehicle.id;
+      setActiveBoardKey(vehicle.board);
+    } else {
+      scrollToAndHighlight(vehicle.id);
+    }
+  }
+
+  useEffect(() => {
+    if (pendingScrollVehicleId.current) {
+      const id = pendingScrollVehicleId.current;
+      pendingScrollVehicleId.current = null;
+      setTimeout(() => scrollToAndHighlight(id), 60);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBoardKey]);
+
+  const searchResults = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const scored = vehicles
+      .map((v) => {
+        const haystack = `${v.stock_number ?? ''} ${v.vin ?? ''} ${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''} ${v.trim ?? ''}`.toLowerCase();
+        if (!haystack.includes(q)) return null;
+        const isExact = v.stock_number?.toLowerCase() === q || v.vin?.toLowerCase() === q;
+        return { vehicle: v, isExact };
+      })
+      .filter((r): r is { vehicle: Vehicle; isExact: boolean } => r !== null)
+      .sort((a, b) => Number(b.isExact) - Number(a.isExact));
+    return scored.slice(0, 10);
+  })();
+
+  function locationLabelFor(vehicle: Vehicle): string {
+    const b = boards.find((bd) => bd.key === vehicle.board);
+    const s = b?.stages.find((st) => st.key === vehicle.stage);
+    return b ? `${b.label}${s ? ` · ${s.label}` : ''}` : vehicle.board;
+  }
 
   // A small activation distance means a normal tap (e.g. opening the dropdown)
   // doesn't accidentally start a drag — only a deliberate press-and-move does.
@@ -283,13 +349,65 @@ export default function DealerBoard({
             👤 Roles
           </button>
         )}
-        <span
-          title="Live"
-          className={`ml-auto w-2 h-2 rounded-full flex-shrink-0 transition-all duration-500 ${
-            liveFlash ? 'bg-signal-green shadow-glowGreen scale-125' : 'bg-signal-green opacity-60'
-          }`}
-          aria-label="Live updates active"
-        />
+        <div className="relative ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setSearchOpen((o) => !o)}
+            aria-label="Search vehicles"
+            className="text-steel text-sm whitespace-nowrap px-2 py-1"
+          >
+            🔍
+          </button>
+          <span
+            title="Live"
+            className={`w-2 h-2 rounded-full flex-shrink-0 transition-all duration-500 ${
+              liveFlash ? 'bg-signal-green shadow-glowGreen scale-125' : 'bg-signal-green opacity-60'
+            }`}
+            aria-label="Live updates active"
+          />
+
+          {searchOpen && (
+            <>
+              <button
+                className="fixed inset-0 z-40 cursor-default"
+                aria-label="Close search"
+                onClick={() => setSearchOpen(false)}
+              />
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lift border border-gray-200 w-72 max-h-96 overflow-y-auto z-50">
+                <div className="p-2 border-b border-gray-100">
+                  <input
+                    autoFocus
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Stock #, VIN, or model…"
+                    className="w-full text-sm border border-gray-300 rounded-md px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-signal-blue"
+                  />
+                </div>
+                {searchQuery.trim() && (
+                  searchResults.length === 0 ? (
+                    <p className="text-steel text-sm p-3">No matches.</p>
+                  ) : (
+                    searchResults.map(({ vehicle }) => (
+                      <button
+                        key={vehicle.id}
+                        onClick={() => handleSearchSelect(vehicle)}
+                        className="w-full text-left px-3 py-2.5 border-b border-gray-50 last:border-0 hover:bg-asphalt"
+                      >
+                        <p className="text-sm font-medium text-ink truncate">
+                          {vehicle.stock_number ? `${vehicle.stock_number}-` : ''}
+                          {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
+                        </p>
+                        <p className="text-xs text-steel">
+                          {locationLabelFor(vehicle)}
+                          {vehicle.completed && ' · Completed'}
+                        </p>
+                      </button>
+                    ))
+                  )
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </nav>
 
       {error && <p className="text-signal-red text-sm px-4 py-2">{error}</p>}
@@ -310,6 +428,7 @@ export default function DealerBoard({
                   usedRatePerDay={usedRatePerDay}
                   isOwner={isOwner}
                   isManager={isManager}
+                  highlightedVehicleId={highlightedVehicleId}
                   vehicles={vehicles
                     .filter((v) => v.board === activeBoard.key && v.stage === stage.key)
                     .sort((a, b) => {
@@ -346,7 +465,7 @@ export default function DealerBoard({
       <button
         onClick={() => setScanModalOpen(true)}
         className="fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full bg-ink text-white shadow-lift flex items-center justify-center active:scale-90 transition"
-        aria-label="Scan VIN to add a vehicle"
+        aria-label="Scan a VIN"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
           <path
@@ -360,15 +479,14 @@ export default function DealerBoard({
       </button>
 
       {scanModalOpen && (
-        <AddVehicleModal
-          dealershipId={dealershipId}
+        <ScanToMoveModal
           boards={boards}
-          autoScan
+          vehicles={vehicles}
           onClose={() => setScanModalOpen(false)}
-          onCreated={() => {
-            setScanModalOpen(false);
-            loadVehicles();
-          }}
+          onMoved={loadVehicles}
+          onNotFound={(vin) =>
+            setAddModal({ board: 'main', stage: 'inbound_trade_in', initialVin: vin })
+          }
         />
       )}
 
@@ -386,7 +504,7 @@ export default function DealerBoard({
               Discard
             </button>
             <button
-              onClick={() => setAddModal({ board: 'main', stage: 'inbound_trade_in', restoreDraft: true } as any)}
+              onClick={() => setAddModal({ board: 'main', stage: 'inbound_trade_in', restoreDraft: true })}
               className="font-semibold text-signal-blue"
             >
               Resume →
@@ -399,9 +517,10 @@ export default function DealerBoard({
         <AddVehicleModal
           dealershipId={dealershipId}
           boards={boards}
-          board={(addModal as any).board}
-          stage={(addModal as any).stage}
-          restoreDraft={(addModal as any).restoreDraft ?? false}
+          board={addModal.board}
+          stage={addModal.stage}
+          restoreDraft={addModal.restoreDraft ?? false}
+          initialVin={addModal.initialVin}
           onClose={() => setAddModal(null)}
           onCreated={() => {
             setAddModal(null);

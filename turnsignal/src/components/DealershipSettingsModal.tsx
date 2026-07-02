@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import ModalCloseButton from './ModalCloseButton';
 
 export default function DealershipSettingsModal({
   dealershipId,
@@ -50,9 +51,7 @@ export default function DealershipSettingsModal({
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-display text-lg font-semibold text-ink">Aging colors</h2>
-          <button onClick={onClose} className="text-steel text-sm">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <p className="text-sm text-steel mb-4">
           How many days in a stage before a card turns yellow, then red, for this dealership. Waiting on Title

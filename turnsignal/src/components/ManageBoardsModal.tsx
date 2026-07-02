@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { BoardConfig, StageConfig } from '../lib/boards';
+import ModalCloseButton from './ModalCloseButton';
 
 export default function ManageBoardsModal({
   dealershipId,
@@ -155,9 +156,7 @@ export default function ManageBoardsModal({
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[88vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <h2 className="font-display text-lg font-semibold text-ink">Manage boards & columns</h2>
-          <button onClick={onClose} className="text-steel text-sm py-2">
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">

@@ -58,6 +58,7 @@ export default function VehicleCard({
   usedRatePerDay,
   isOwner,
   isManager,
+  highlighted,
   onMoved,
 }: {
   vehicle: Vehicle;
@@ -68,6 +69,7 @@ export default function VehicleCard({
   usedRatePerDay: number;
   isOwner: boolean;
   isManager: boolean;
+  highlighted?: boolean;
   onMoved: () => void;
 }) {
   const { session, userName } = useAuth();
@@ -139,9 +141,13 @@ export default function VehicleCard({
 
   // Completed vehicles collapse down to a single slim row, Planner-style —
   // tap anywhere on the row to pop it back open without un-completing it.
-  if (vehicle.completed && !expanded) {
+  // A search result landing on a completed vehicle auto-expands it too,
+  // via the `highlighted` prop, so the search doesn't point at a row
+  // that's still hidden behind a collapsed summary.
+  if (vehicle.completed && !expanded && !highlighted) {
     return (
       <div
+        id={`vehicle-card-${vehicle.id}`}
         ref={setNodeRef}
         style={{
           transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
@@ -183,14 +189,16 @@ export default function VehicleCard({
 
   return (
     <div
+      id={`vehicle-card-${vehicle.id}`}
       ref={setNodeRef}
       style={{
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
         transition,
         opacity: isDragging ? 0.3 : 1,
       }}
-      className={`relative bg-white rounded-xl shadow-sm border border-gray-200 p-3.5 mb-3 pl-5 transition-opacity duration-150
-        before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-xl ${ageStripe(days, thresholds)}`}
+      className={`relative bg-white rounded-xl shadow-sm border border-gray-200 p-3.5 mb-3 pl-5 transition-all duration-300
+        before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-xl ${ageStripe(days, thresholds)}
+        ${highlighted ? 'ring-2 ring-signal-blue shadow-lift' : ''}`}
     >
       {!vehicle.completed && (
         <div
