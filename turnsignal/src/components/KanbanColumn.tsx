@@ -70,7 +70,7 @@ export default function KanbanColumn({
         </button>
       </div>
 
-      <div className="overflow-y-auto flex-1">
+      <div className="overflow-y-auto flex-1 p-1 -m-1">
         {activeVehicles.length === 0 && completedVehicles.length === 0 ? (
           <p className="text-steel text-sm py-6 text-center">No vehicles here</p>
         ) : (

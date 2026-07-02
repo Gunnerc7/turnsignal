@@ -10,6 +10,20 @@ function vehicleLabel(v: Vehicle): string {
   return `${v.stock_number ? v.stock_number + '-' : ''}${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim();
 }
 
+// How many of the 17 positions differ between two VINs of equal length.
+// Used as a tolerant fallback below — even reliable OCR can occasionally
+// read a single character differently between two separate photos of the
+// same sticker, and an exact-string match alone would silently treat that
+// as "not found," even though it's clearly the same vehicle to a human.
+function hammingDistance(a: string, b: string): number {
+  if (a.length !== 17 || b.length !== 17) return 99;
+  let distance = 0;
+  for (let i = 0; i < 17; i++) {
+    if (a[i] !== b[i]) distance++;
+  }
+  return distance;
+}
+
 export default function ScanToMoveModal({
   boards,
   vehicles,
@@ -24,8 +38,9 @@ export default function ScanToMoveModal({
   onNotFound: (vin: string) => void;
 }) {
   const [cameraOpen, setCameraOpen] = useState(true);
-  const [phase, setPhase] = useState<'looking' | 'found' | 'error'>('looking');
+  const [phase, setPhase] = useState<'looking' | 'found' | 'confirm' | 'error'>('looking');
   const [matchedVehicle, setMatchedVehicle] = useState<Vehicle | null>(null);
+  const [scannedVin, setScannedVin] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [moving, setMoving] = useState<string | null>(null); // "board::stage" currently being moved to
 
@@ -41,24 +56,41 @@ export default function ScanToMoveModal({
       return;
     }
 
-    // Matching against an existing VIN string exactly is itself strong
-    // confirmation the scan is correct, on top of whatever the checksum
-    // already told us — a wrong read is very unlikely to coincidentally
-    // match a real VIN already in the system.
-    const match = vehicles.find(
-      (v) => !v.completed && v.vin && v.vin.toUpperCase() === detected.toUpperCase()
-    );
+    const detectedClean = detected.toUpperCase().trim();
+    const activeVehicles = vehicles.filter((v) => !v.completed && v.vin);
 
-    if (match) {
-      setMatchedVehicle(match);
+    // Exact match first — matching against an existing VIN string exactly
+    // is itself strong confirmation the scan is correct, on top of
+    // whatever the checksum already told us.
+    const exact = activeVehicles.find((v) => v.vin!.toUpperCase().trim() === detectedClean);
+    if (exact) {
+      setMatchedVehicle(exact);
       setPhase('found');
-    } else {
-      // Not in the system yet — hand off to Add Vehicle with the VIN
-      // already confirmed, defaulting to Inbound/Trade-In since scanning
-      // an unrecognized VIN almost always means it's a fresh arrival.
-      onNotFound(detected);
-      onClose();
+      return;
     }
+
+    // No exact match — check for a close one (off by 1-2 characters) before
+    // assuming this is a brand new vehicle. Only acts on it if there's
+    // exactly one such close candidate; if two vehicles are both a
+    // plausible near-match, that's genuinely ambiguous and guessing wrong
+    // would be worse than just asking the person to confirm normally.
+    const close = activeVehicles
+      .map((v) => ({ vehicle: v, distance: hammingDistance(v.vin!.toUpperCase().trim(), detectedClean) }))
+      .filter((c) => c.distance > 0 && c.distance <= 2)
+      .sort((a, b) => a.distance - b.distance);
+
+    if (close.length === 1) {
+      setMatchedVehicle(close[0].vehicle);
+      setScannedVin(detectedClean);
+      setPhase('confirm');
+      return;
+    }
+
+    // Nothing close enough found — hand off to Add Vehicle with the VIN
+    // already confirmed, defaulting to Inbound/Trade-In since scanning an
+    // unrecognized VIN almost always means it's a fresh arrival.
+    onNotFound(detected);
+    onClose();
   }
 
   async function handleMove(boardKey: string, stageKey: string) {
@@ -74,6 +106,11 @@ export default function ScanToMoveModal({
     setErrorMsg('');
     setPhase('looking');
     setCameraOpen(true);
+  }
+
+  function handleRejectMatch() {
+    onNotFound(scannedVin);
+    onClose();
   }
 
   if (cameraOpen) {
@@ -100,6 +137,35 @@ export default function ScanToMoveModal({
               >
                 Try again
               </button>
+            </div>
+          )}
+
+          {phase === 'confirm' && matchedVehicle && (
+            <div>
+              <p className="text-sm text-signal-amber font-medium mb-1">Close match — please confirm</p>
+              <p className="text-xs text-steel mb-3">
+                The scan wasn't a perfect read, but this is very close to a vehicle already on the board.
+                Is this it?
+              </p>
+              <div className="border border-gray-200 rounded-lg p-3 mb-4">
+                <p className="font-display font-semibold text-ink">{vehicleLabel(matchedVehicle)}</p>
+                <p className="text-xs text-steel mt-1 tabular">On file: {matchedVehicle.vin}</p>
+                <p className="text-xs text-steel tabular">Scanned: {scannedVin}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRejectMatch}
+                  className="flex-1 text-sm text-steel border border-gray-300 rounded-lg py-2.5"
+                >
+                  No, it's new
+                </button>
+                <button
+                  onClick={() => setPhase('found')}
+                  className="flex-1 text-sm bg-signal-blue text-white font-medium rounded-lg py-2.5"
+                >
+                  Yes, that's it
+                </button>
+              </div>
             </div>
           )}
 

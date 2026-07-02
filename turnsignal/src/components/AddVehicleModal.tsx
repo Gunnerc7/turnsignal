@@ -262,15 +262,15 @@ export default function AddVehicleModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-40 flex items-end sm:items-center justify-center">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto p-5">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
           <h2 className="font-display text-lg font-semibold text-ink">
             {isEditing ? 'Edit vehicle' : 'Add vehicle'}
           </h2>
           <ModalCloseButton onClick={onClose} />
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 overflow-y-auto flex-1 px-5 py-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">VIN</label>
             <div className="flex gap-2">
