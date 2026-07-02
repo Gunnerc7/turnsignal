@@ -119,14 +119,16 @@ export default function ScanToMoveModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-40 flex items-end sm:items-center justify-center">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm max-h-[85vh] flex flex-col">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm modal-h-85 flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <h2 className="font-display text-lg font-semibold text-ink">Scan to move</h2>
           <ModalCloseButton onClick={onClose} />
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          {phase === 'looking' && <p className="text-steel text-sm">Reading VIN…</p>}
+          {phase === 'looking' && (
+            <p className="text-steel text-sm">Reading VIN… this can take a few seconds on a slow connection.</p>
+          )}
 
           {phase === 'error' && (
             <div>

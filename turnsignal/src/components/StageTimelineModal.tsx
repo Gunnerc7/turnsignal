@@ -64,7 +64,7 @@ export default function StageTimelineModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-40 flex items-end sm:items-center justify-center">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md modal-h-85 flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div>
             <h2 className="font-display text-base font-semibold text-ink">Timeline</h2>

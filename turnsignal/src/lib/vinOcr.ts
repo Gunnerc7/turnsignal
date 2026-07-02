@@ -124,11 +124,21 @@ export async function scanVin(
   imageDataUrl: string
 ): Promise<{ vin: string | null; verified: boolean; source: 'cloud' | 'local' }> {
   try {
+    // Without an explicit timeout, a slow or hung connection leaves this
+    // fetch waiting indefinitely — it never throws, so the catch block
+    // below never runs, and the local fallback never kicks in. 12 seconds
+    // is generous for a mobile connection but guarantees this can never
+    // hang forever.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     const response = await fetch('/api/scan-vin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: imageDataUrl }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     if (response.ok) {
       const data = await response.json();
@@ -137,8 +147,9 @@ export async function scanVin(
       }
     }
   } catch {
-    // Network error, function not deployed, etc. — fall through to the
-    // on-device path below rather than surfacing a dead end.
+    // Network error, timeout (abort), function not deployed, etc. — fall
+    // through to the on-device path below rather than hanging or
+    // surfacing a dead end.
   }
 
   const local = await extractVinFromImageLocally(imageDataUrl);

@@ -35,6 +35,23 @@ body {
   }
 }
 
+/* Safari-specific fix: the on-screen keyboard opening, and Safari's own
+   toolbar collapsing as you scroll, both change the actual visible
+   viewport without the layout math behind plain `vh` units or
+   `position: fixed` updating to match — Chrome for iOS handles its own
+   browser chrome differently and doesn't hit the same quirk, even though
+   both run on the same underlying engine. `dvh` (dynamic viewport height)
+   tracks the real visible area instead, which is what stops a modal's
+   header/close button from ending up positioned outside the visible
+   screen specifically in Safari. The plain `vh` line first is a fallback
+   for anything that doesn't understand `dvh` — an unsupported value only
+   invalidates that one declaration, so the preceding `vh` value is what
+   stays in effect for those browsers. */
+.modal-h-80 { max-height: 80vh; max-height: 80dvh; }
+.modal-h-85 { max-height: 85vh; max-height: 85dvh; }
+.modal-h-88 { max-height: 88vh; max-height: 88dvh; }
+.modal-h-90 { max-height: 90vh; max-height: 90dvh; }
+
 /* A visible, always-on scrollbar for the board's horizontal scroll area —
    without this, a desktop window that isn't maximized has no obvious way
    to tell there's more content off to the side, let alone drag to see it. */
