@@ -17,6 +17,7 @@ export default function KanbanColumn({
   isManager,
   vehicles,
   highlightedVehicleId,
+  onAnyCardModalOpenChange,
   onAddClick,
   onMoved,
 }: {
@@ -31,6 +32,7 @@ export default function KanbanColumn({
   isManager: boolean;
   vehicles: Vehicle[];
   highlightedVehicleId?: string | null;
+  onAnyCardModalOpenChange?: (open: boolean) => void;
   onAddClick: () => void;
   onMoved: () => void;
 }) {
@@ -53,7 +55,7 @@ export default function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`snap-col w-[86vw] sm:w-72 flex-shrink-0 flex flex-col max-h-full rounded-xl p-3 transition-colors duration-150 ${
+      className={`snap-col w-[calc(100vw-2rem)] sm:w-72 flex-shrink-0 flex flex-col max-h-full rounded-xl p-3 transition-colors duration-150 ${
         isOver ? 'bg-blue-50 ring-2 ring-signal-blue ring-inset' : 'bg-asphalt'
       }`}
     >
@@ -91,6 +93,7 @@ export default function KanbanColumn({
                     isOwner={isOwner}
                     isManager={isManager}
                     highlighted={v.id === highlightedVehicleId}
+                    onAnyModalOpenChange={onAnyCardModalOpenChange}
                     onMoved={onMoved}
                   />
                 ))}
@@ -120,6 +123,7 @@ export default function KanbanColumn({
                         isOwner={isOwner}
                         isManager={isManager}
                         highlighted={v.id === highlightedVehicleId}
+                        onAnyModalOpenChange={onAnyCardModalOpenChange}
                         onMoved={onMoved}
                       />
                     ))}

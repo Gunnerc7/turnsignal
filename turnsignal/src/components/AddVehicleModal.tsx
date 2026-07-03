@@ -31,7 +31,7 @@ export default function AddVehicleModal({
   initialVin?: string;
   restoreDraft?: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (newVehicleId?: string) => void;
 }) {
   const { session, userName } = useAuth();
   const isEditing = !!vehicle;
@@ -239,7 +239,7 @@ export default function AddVehicleModal({
     }
     if (created) await notifyAssignee(created.id);
     sessionStorage.removeItem('ts-add-draft');
-    onCreated();
+    onCreated(created?.id);
   }
 
   async function handleDelete() {

@@ -59,6 +59,7 @@ export default function VehicleCard({
   isOwner,
   isManager,
   highlighted,
+  onAnyModalOpenChange,
   onMoved,
 }: {
   vehicle: Vehicle;
@@ -70,6 +71,7 @@ export default function VehicleCard({
   isOwner: boolean;
   isManager: boolean;
   highlighted?: boolean;
+  onAnyModalOpenChange?: (open: boolean) => void;
   onMoved: () => void;
 }) {
   const { session, userName } = useAuth();
@@ -83,6 +85,16 @@ export default function VehicleCard({
   const [titleStatusOpen, setTitleStatusOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const canEditTitleStatus = isOwner || isManager;
+
+  // Reports whenever any of this card's own modals open or close. Used to
+  // hide the board's floating scan button while one is open — that button
+  // is a fixed-position overlay of its own, and a card-level modal (Notes,
+  // Timeline, Photos, etc.) opening at the same time was letting the two
+  // visually collide, with the button ending up on top of modal content
+  // instead of safely behind it.
+  useEffect(() => {
+    onAnyModalOpenChange?.(notesOpen || timelineOpen || editOpen || photosOpen || titleStatusOpen);
+  }, [notesOpen, timelineOpen, editOpen, photosOpen, titleStatusOpen, onAnyModalOpenChange]);
   // Once recon_started_at is set (the moment a vehicle first leaves Inbound),
   // the badge shows total time across every stage since then — it never
   // resets on a stage move. Still in Inbound with no anchor yet? Fall back

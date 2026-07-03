@@ -211,6 +211,15 @@ export default function DealerBoard({
 
   const [liveFlash, setLiveFlash] = useState(false);
 
+  // Tracks whether any card's own modal (Notes, Timeline, Photos, etc.) is
+  // currently open, across every column — used to hide the floating scan
+  // button while one is open, since both are fixed-position overlays and
+  // were otherwise able to visually collide.
+  const [openCardModalCount, setOpenCardModalCount] = useState(0);
+  const handleAnyCardModalOpenChange = useCallback((open: boolean) => {
+    setOpenCardModalCount((c) => Math.max(0, c + (open ? 1 : -1)));
+  }, []);
+
   // Real-time: whenever any vehicle in this dealership changes (moved,
   // edited, added, deleted) re-fetch so every user sees the same board
   // without needing to manually refresh. Debounced 300 ms so a rapid
@@ -415,7 +424,7 @@ export default function DealerBoard({
       {activeBoard && (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           <main ref={boardScrollRef} className="board-scroll flex-1 min-w-0 overflow-x-auto p-4">
-            <div className="snap-row flex gap-4 h-full">
+            <div className="flex gap-4 h-full">
               {activeBoard.stages.map((stage) => (
                 <KanbanColumn
                   key={stage.key}
@@ -429,6 +438,7 @@ export default function DealerBoard({
                   isOwner={isOwner}
                   isManager={isManager}
                   highlightedVehicleId={highlightedVehicleId}
+                  onAnyCardModalOpenChange={handleAnyCardModalOpenChange}
                   vehicles={vehicles
                     .filter((v) => v.board === activeBoard.key && v.stage === stage.key)
                     .sort((a, b) => {
@@ -462,21 +472,23 @@ export default function DealerBoard({
         </DndContext>
       )}
 
-      <button
-        onClick={() => setScanModalOpen(true)}
-        className="fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full bg-ink text-white shadow-lift flex items-center justify-center active:scale-90 transition"
-        aria-label="Scan a VIN"
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M4 7V5a1 1 0 011-1h2M20 7V5a1 1 0 00-1-1h-2M4 17v2a1 1 0 001 1h2M20 17v2a1 1 0 01-1 1h-2M4 12h16"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+      {openCardModalCount === 0 && (
+        <button
+          onClick={() => setScanModalOpen(true)}
+          className="fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full bg-ink text-white shadow-lift flex items-center justify-center active:scale-90 transition"
+          aria-label="Scan a VIN"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M4 7V5a1 1 0 011-1h2M20 7V5a1 1 0 00-1-1h-2M4 17v2a1 1 0 001 1h2M20 17v2a1 1 0 01-1 1h-2M4 12h16"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
 
       {scanModalOpen && (
         <ScanToMoveModal
@@ -522,10 +534,25 @@ export default function DealerBoard({
           restoreDraft={addModal.restoreDraft ?? false}
           initialVin={addModal.initialVin}
           onClose={() => setAddModal(null)}
-          onCreated={() => {
+          onCreated={async (newVehicleId) => {
+            const targetBoard = addModal.board;
             setAddModal(null);
             setHasDraft(false);
-            loadVehicles();
+            await loadVehicles();
+
+            // Confirms the card actually landed where expected — the
+            // same scroll-and-highlight treatment search results already
+            // get, so adding a vehicle ends by showing you that exact
+            // card instead of leaving you wherever the board happened to
+            // be scrolled before.
+            if (newVehicleId) {
+              if (targetBoard !== activeBoardKey) {
+                pendingScrollVehicleId.current = newVehicleId;
+                setActiveBoardKey(targetBoard);
+              } else {
+                setTimeout(() => scrollToAndHighlight(newVehicleId), 60);
+              }
+            }
           }}
         />
       )}

@@ -19,7 +19,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.snap-row {
+/* scroll-snap-type has to live on the actual scrolling element to take
+   effect at all — it was previously on .snap-row, a non-scrolling child
+   of the real scroll container (.board-scroll), which is exactly why
+   swiping felt like free scrolling instead of snapping cleanly between
+   columns. */
+.board-scroll {
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
 }
