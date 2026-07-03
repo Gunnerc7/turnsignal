@@ -74,6 +74,30 @@ export default function ManageBoardsModal({
     onChanged();
   }
 
+  // Column order is just array order in the stages list — reordering is a
+  // simple swap-with-neighbor-and-save. Up/down buttons instead of drag
+  // handles deliberately: this is a settings screen, not the board itself,
+  // and a couple of taps is a lot more reliable than a drag gesture inside
+  // a modal, especially on a phone.
+  async function moveStage(board: BoardConfig, index: number, direction: 'up' | 'down') {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= board.stages.length) return;
+
+    const updatedStages = [...board.stages];
+    [updatedStages[index], updatedStages[targetIndex]] = [updatedStages[targetIndex], updatedStages[index]];
+
+    setError(null);
+    const { error: updateError } = await supabase
+      .from('boards')
+      .update({ stages: updatedStages })
+      .eq('id', board.id);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    onChanged();
+  }
+
   async function deleteStage(board: BoardConfig, stageKey: string) {
     const { count } = await supabase
       .from('vehicles')
@@ -176,8 +200,26 @@ export default function ManageBoardsModal({
               </div>
 
               <div className="space-y-1.5">
-                {board.stages.map((stage) => (
-                  <div key={stage.key} className="flex items-center gap-2">
+                {board.stages.map((stage, index) => (
+                  <div key={stage.key} className="flex items-center gap-1.5">
+                    <div className="flex flex-col flex-shrink-0">
+                      <button
+                        onClick={() => moveStage(board, index, 'up')}
+                        disabled={index === 0}
+                        aria-label={`Move ${stage.label} left`}
+                        className="text-steel disabled:opacity-25 leading-none px-1 py-0.5"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        onClick={() => moveStage(board, index, 'down')}
+                        disabled={index === board.stages.length - 1}
+                        aria-label={`Move ${stage.label} right`}
+                        className="text-steel disabled:opacity-25 leading-none px-1 py-0.5"
+                      >
+                        ▼
+                      </button>
+                    </div>
                     <input
                       defaultValue={stage.label}
                       onBlur={(e) => renameStage(board, stage.key, e.target.value)}

@@ -21,6 +21,7 @@ export type CarryingCostInput = {
   is_new: boolean;
   completed: boolean;
   completed_at: string | null;
+  title_status: 'has_title' | 'poa' | 'waiting' | null;
 };
 
 // New: the clock starts when it actually enters Service (or later) —
@@ -29,15 +30,18 @@ export type CarryingCostInput = {
 // Used: the clock starts the moment the card is added — inbound/transit
 // time counts on purpose, since that's already "we own it" time.
 // Either way, the clock freezes the moment it's marked complete, rather
-// than continuing to climb forever. The Loaners board is excluded
-// entirely — those are vehicles already on the lot, not recon inventory
-// accruing holding cost, same reasoning as the aging colors exclusion.
+// than continuing to climb forever. The Loaners board is normally
+// excluded entirely — those are vehicles already on the lot, not recon
+// inventory accruing holding cost — EXCEPT when title_status is "waiting":
+// a loaner that's still waiting on title is genuinely still a real
+// carrying cost, not just a car out with a customer, so that specific
+// combination is deliberately not excluded.
 export function carryingCostSoFar(
   vehicle: CarryingCostInput,
   newRatePerDay: number,
   usedRatePerDay: number
 ): number {
-  if (vehicle.board === 'loaners') return 0;
+  if (vehicle.board === 'loaners' && vehicle.title_status !== 'waiting') return 0;
 
   const startDate = vehicle.is_new ? vehicle.recon_started_at : vehicle.created_at;
   if (!startDate) return 0;

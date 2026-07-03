@@ -76,6 +76,7 @@ type VehicleRow = {
   completed_at: string | null;
   has_damage: boolean;
   is_new: boolean;
+  title_status: 'has_title' | 'poa' | 'waiting' | null;
   loaner_return_date: string | null;
   created_at: string;
   stock_number: string | null;
@@ -139,7 +140,7 @@ export default function AnalyticsPage({
       const { data: vehiclesData } = await supabase
         .from('vehicles')
         .select(
-          'id, board, stage, stage_entered_at, recon_started_at, completed, completed_at, has_damage, is_new, loaner_return_date, created_at, stock_number, year, make, model, completed_by_name'
+          'id, board, stage, stage_entered_at, recon_started_at, completed, completed_at, has_damage, is_new, title_status, loaner_return_date, created_at, stock_number, year, make, model, completed_by_name'
         )
         .eq('dealership_id', dealershipId);
 
@@ -326,7 +327,10 @@ export default function AnalyticsPage({
       .filter((v) => !v.completed)
       .forEach((v) => {
         const cost = carryingCostSoFar(v, newRatePerDay, usedRatePerDay);
-        if (v.board === 'loaners') return; // carryingCostSoFar already returns 0 for loaners; skip from the average too so it doesn't drag it down
+        // Matches the same exception carryingCostSoFar itself applies —
+        // a Loaners-board vehicle still waiting on title genuinely has a
+        // real carrying cost and shouldn't be skipped from the average.
+        if (v.board === 'loaners' && v.title_status !== 'waiting') return;
         if (v.is_new) { newCostSum += cost; newCostCount += 1; }
         else { usedCostSum += cost; usedCostCount += 1; }
       });
@@ -366,7 +370,7 @@ export default function AnalyticsPage({
     // been sitting since before the period only counts the portion of
     // time that actually fell inside it.
     const periodCarryingCost = vehicles
-      .filter((v) => v.board !== 'loaners')
+      .filter((v) => v.board !== 'loaners' || v.title_status === 'waiting')
       .reduce((sum, v) => {
         const startDate = v.is_new ? v.recon_started_at : v.created_at;
         if (!startDate) return sum;
@@ -555,10 +559,18 @@ ${stats.topPerformers.length > 0 ? `
 
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3.5 bg-ink text-white flex-shrink-0">
-        <div>
-          <p className="text-[11px] text-mist uppercase tracking-wider leading-none">Analytics</p>
-          <h1 className="font-display text-lg font-semibold leading-tight">{dealershipName}</h1>
+      <div className="flex items-center justify-between px-4 py-3.5 bg-ink text-white flex-shrink-0 flex-wrap gap-y-2">
+        <div className="flex items-center gap-2">
+          <div>
+            <p className="text-[11px] text-mist uppercase tracking-wider leading-none">Analytics</p>
+            <h1 className="font-display text-lg font-semibold leading-tight">{dealershipName}</h1>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-2 text-xs font-semibold bg-signal-blue text-white rounded-full px-3 py-1.5 whitespace-nowrap"
+          >
+            ← Main Board
+          </button>
         </div>
         <div className="flex items-center gap-3">
           {refreshing && <span className="text-xs text-mist">Refreshing…</span>}
@@ -580,9 +592,6 @@ ${stats.topPerformers.length > 0 ? `
             className="text-xs text-mist hover:text-white py-2 whitespace-nowrap"
           >
             ⬇ Export PDF
-          </button>
-          <button onClick={onClose} className="text-sm font-semibold text-white bg-signal-blue rounded-full px-3 py-1.5 whitespace-nowrap">
-            ← Main Board
           </button>
         </div>
       </div>

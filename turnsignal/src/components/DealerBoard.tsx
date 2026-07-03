@@ -331,7 +331,7 @@ export default function DealerBoard({
             {b.label}
           </button>
         ))}
-        {isOwner && (
+        {(isOwner || isManager) && (
           <button
             onClick={() => setManageBoardsOpen(true)}
             className="ml-1 text-steel text-sm whitespace-nowrap px-2"
