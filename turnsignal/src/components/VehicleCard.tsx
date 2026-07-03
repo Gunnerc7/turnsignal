@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSortable } from '@dnd-kit/sortable';
 import { useAuth } from '../lib/AuthContext';
 import { Vehicle, VehicleNote } from '../lib/types';
@@ -392,57 +393,73 @@ export default function VehicleCard({
         );
       })()}
 
-      {notesOpen && (
-        <NotesModal
-          vehicleId={vehicle.id}
-          vehicleLabel={vehicleLabel}
-          onClose={() => setNotesOpen(false)}
-          onChanged={loadNotes}
-        />
-      )}
+      {/* Every modal below is rendered via a portal straight to
+          document.body, deliberately escaping this card's nested position
+          inside the board's scrolling containers (the horizontal board
+          scroll, then the column's own vertical scroll). Safari has a
+          long-documented bug — not present in Chrome, which is why this
+          worked there and not here — where a "fixed, cover-the-whole-
+          screen" element loses that ability when it's a DOM descendant of
+          a scrolling container: instead of covering everything, it gets
+          visually trapped inside that scrolling area. Portaling to
+          document.body means none of these are descendants of any
+          scrolling ancestor anymore, so they render correctly everywhere. */}
+      {createPortal(
+        <>
+          {notesOpen && (
+            <NotesModal
+              vehicleId={vehicle.id}
+              vehicleLabel={vehicleLabel}
+              onClose={() => setNotesOpen(false)}
+              onChanged={loadNotes}
+            />
+          )}
 
-      {timelineOpen && (
-        <StageTimelineModal
-          vehicleId={vehicle.id}
-          vehicleLabel={vehicleLabel}
-          board={vehicle.board}
-          boards={boards}
-          onClose={() => setTimelineOpen(false)}
-        />
-      )}
+          {timelineOpen && (
+            <StageTimelineModal
+              vehicleId={vehicle.id}
+              vehicleLabel={vehicleLabel}
+              board={vehicle.board}
+              boards={boards}
+              onClose={() => setTimelineOpen(false)}
+            />
+          )}
 
-      {photosOpen && (
-        <PhotosModal
-          vehicleId={vehicle.id}
-          dealershipId={vehicle.dealership_id}
-          vehicleLabel={vehicleLabel}
-          onClose={() => setPhotosOpen(false)}
-        />
-      )}
+          {photosOpen && (
+            <PhotosModal
+              vehicleId={vehicle.id}
+              dealershipId={vehicle.dealership_id}
+              vehicleLabel={vehicleLabel}
+              onClose={() => setPhotosOpen(false)}
+            />
+          )}
 
-      {titleStatusOpen && (
-        <TitleStatusModal
-          vehicleId={vehicle.id}
-          vehicleLabel={vehicleLabel}
-          currentStatus={vehicle.title_status}
-          onClose={() => setTitleStatusOpen(false)}
-          onSaved={onMoved}
-        />
-      )}
+          {titleStatusOpen && (
+            <TitleStatusModal
+              vehicleId={vehicle.id}
+              vehicleLabel={vehicleLabel}
+              currentStatus={vehicle.title_status}
+              onClose={() => setTitleStatusOpen(false)}
+              onSaved={onMoved}
+            />
+          )}
 
-      {editOpen && (
-        <AddVehicleModal
-          dealershipId={vehicle.dealership_id}
-          boards={boards}
-          board={vehicle.board}
-          stage={vehicle.stage}
-          vehicle={vehicle}
-          onClose={() => setEditOpen(false)}
-          onCreated={() => {
-            setEditOpen(false);
-            onMoved();
-          }}
-        />
+          {editOpen && (
+            <AddVehicleModal
+              dealershipId={vehicle.dealership_id}
+              boards={boards}
+              board={vehicle.board}
+              stage={vehicle.stage}
+              vehicle={vehicle}
+              onClose={() => setEditOpen(false)}
+              onCreated={() => {
+                setEditOpen(false);
+                onMoved();
+              }}
+            />
+          )}
+        </>,
+        document.body
       )}
     </div>
   );
