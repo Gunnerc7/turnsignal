@@ -89,7 +89,7 @@ export default function NotificationBell() {
             aria-label="Close notifications"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lift border border-gray-200 w-72 max-h-96 overflow-y-auto z-50">
+          <div className="fixed left-4 right-4 top-28 max-w-sm mx-auto bg-white rounded-lg shadow-lift border border-gray-200 max-h-96 overflow-y-auto z-50">
             <div className="px-3 py-2 border-b border-gray-100">
               <p className="text-xs font-semibold text-steel uppercase tracking-wide">Notifications</p>
             </div>

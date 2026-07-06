@@ -34,6 +34,7 @@ export default function Dashboard() {
   const [nameOpen, setNameOpen] = useState(false);
   const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [navigateTarget, setNavigateTarget] = useState<{ vehicleId: string; board: string } | null>(null);
   const [boardRefreshKey, setBoardRefreshKey] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -237,7 +238,14 @@ export default function Dashboard() {
 
       {isOwner ? (
         viewingAsOwner ? (
-          <DealerBoard dealershipId={viewingAsOwner.id} isOwner isManager={isManager} refreshKey={boardRefreshKey} />
+          <DealerBoard
+            dealershipId={viewingAsOwner.id}
+            isOwner
+            isManager={isManager}
+            refreshKey={boardRefreshKey}
+            navigateTarget={navigateTarget}
+            onNavigateHandled={() => setNavigateTarget(null)}
+          />
         ) : (
           <DealershipPicker onSelect={setViewingAsOwner} />
         )
@@ -254,6 +262,8 @@ export default function Dashboard() {
           isOwner={false}
           isManager={isManager}
           refreshKey={boardRefreshKey}
+          navigateTarget={navigateTarget}
+          onNavigateHandled={() => setNavigateTarget(null)}
         />
       ) : (
         <p className="p-4 text-signal-red text-sm">
@@ -296,6 +306,10 @@ export default function Dashboard() {
           onClose={() => {
             setAnalyticsOpen(false);
             setBoardRefreshKey((k) => k + 1);
+          }}
+          onNavigateToVehicle={(vehicleId, board) => {
+            setAnalyticsOpen(false);
+            setNavigateTarget({ vehicleId, board });
           }}
         />
       )}

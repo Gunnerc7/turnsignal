@@ -60,6 +60,19 @@ function getRangeBounds(
   return { start, end: now };
 }
 
+// The immediately preceding period of the exact same length as whatever's
+// currently selected — e.g. if the current range is the last 7 days, this
+// is the 7 days before that. Works generically for every range type since
+// it just shifts the already-computed current bounds back by their own
+// duration, rather than re-deriving per-range-type logic.
+function getPreviousRangeBounds(currentStart: Date | null, currentEnd: Date): { start: Date; end: Date } | null {
+  if (!currentStart) return null;
+  const durationMs = currentEnd.getTime() - currentStart.getTime();
+  const previousEnd = new Date(currentStart.getTime() - 1);
+  const previousStart = new Date(previousEnd.getTime() - durationMs);
+  return { start: previousStart, end: previousEnd };
+}
+
 function formatDays(days: number | null): string {
   if (days === null) return '—';
   if (days < 1) return '<1 day';
@@ -102,10 +115,12 @@ export default function AnalyticsPage({
   dealershipId,
   dealershipName,
   onClose,
+  onNavigateToVehicle,
 }: {
   dealershipId: string;
   dealershipName: string;
   onClose: () => void;
+  onNavigateToVehicle?: (vehicleId: string, board: string) => void;
 }) {
   const [boards, setBoards] = useState<BoardConfig[]>([]);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
@@ -290,6 +305,28 @@ export default function AnalyticsPage({
     const fastestTurn = turnTimes.length ? Math.min(...turnTimes) : null;
     const slowestTurn = turnTimes.length ? Math.max(...turnTimes) : null;
 
+    // Same Turn Rate calculation, run again against the immediately
+    // preceding period of equal length — this is what powers the trend
+    // arrow in the Executive Summary ("1.2 days faster than last period").
+    // Reuses the exact same serviceEnteredByVehicle map above; only the
+    // date window being checked against changes.
+    const previousBounds = getPreviousRangeBounds(rangeStart, rangeEnd);
+    let previousAvgTurnTime: number | null = null;
+    if (previousBounds) {
+      const previousTurnTimes: number[] = [];
+      vehicles.forEach((v) => {
+        if (v.stage !== 'price_for_lot' || !v.completed || !v.completed_at) return;
+        const completedAt = new Date(v.completed_at);
+        if (completedAt < previousBounds.start || completedAt > previousBounds.end) return;
+        const serviceEntered = serviceEnteredByVehicle.get(v.id);
+        if (!serviceEntered) return;
+        previousTurnTimes.push((completedAt.getTime() - serviceEntered.getTime()) / 86400000);
+      });
+      if (previousTurnTimes.length > 0) {
+        previousAvgTurnTime = previousTurnTimes.reduce((a, b) => a + b, 0) / previousTurnTimes.length;
+      }
+    }
+
     // Longest-aging vehicle still active (not completed) right now.
     // Loaners is excluded — those vehicles are already on the lot, out
     // with a customer or manager, not stuck in recon, same reasoning as
@@ -387,12 +424,30 @@ export default function AnalyticsPage({
     // aging" which only shows the single worst case. Loaners are excluded
     // here automatically too, since isAgingRed treats that board as
     // never color-coded.
-    const agingRedCount = vehicles.filter((v) => {
-      if (v.completed) return false;
-      const anchor = v.recon_started_at ?? v.stage_entered_at;
-      const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
-      return isAgingRed(v.board, v.stage, days, yellowDays, redDays);
-    }).length;
+    const agingRedVehicles = vehicles
+      .filter((v) => {
+        if (v.completed) return false;
+        const anchor = v.recon_started_at ?? v.stage_entered_at;
+        const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
+        return isAgingRed(v.board, v.stage, days, yellowDays, redDays);
+      })
+      .map((v) => {
+        const anchor = v.recon_started_at ?? v.stage_entered_at;
+        const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
+        return { vehicle: v, days };
+      })
+      .sort((a, b) => b.days - a.days);
+    const agingRedCount = agingRedVehicles.length;
+
+    // Full detail behind the Needs Attention panel — same underlying
+    // vehicles as agingRedCount above, just carrying what's needed to
+    // display and navigate to each one instead of only a number.
+    const needsAttention = agingRedVehicles.map(({ vehicle: v, days }) => ({
+      id: v.id,
+      board: v.board,
+      label: vehicleLabel(v),
+      days,
+    }));
 
     const addedInRange = vehicles.filter((v) => inRange(v.created_at)).length;
 
@@ -421,6 +476,7 @@ export default function AnalyticsPage({
       avgDaysFor,
       bottleneck,
       avgTurnTime,
+      previousAvgTurnTime,
       fastestTurn,
       slowestTurn,
       completedInRange: turnTimes.length,
@@ -431,6 +487,7 @@ export default function AnalyticsPage({
       overdueLoaners,
       mainBoardActive,
       agingRedCount,
+      needsAttention,
       totalCarryingCost,
       periodCarryingCost,
       avgNewCarryingCost,
@@ -463,6 +520,14 @@ export default function AnalyticsPage({
       .map((p) => `<tr><td style="padding:5px 10px;border-top:1px solid #e5e7eb;">${p.name}</td><td style="padding:5px 10px;border-top:1px solid #e5e7eb;text-align:right;">${p.count}</td></tr>`)
       .join('');
 
+    const summaryRows = buildExecutiveSummary()
+      .map((s) => `<div class="summary-row"><span>${s.emoji}</span><span>${s.text}</span></div>`)
+      .join('');
+
+    const needsAttentionRows = stats.needsAttention
+      .map((v) => `<tr><td style="padding:5px 10px;border-top:1px solid #e5e7eb;">${v.label}</td><td style="padding:5px 10px;border-top:1px solid #e5e7eb;text-align:right;color:#E5483D;">${v.days.toFixed(1)} days</td></tr>`)
+      .join('');
+
     const html = `<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8"/>
@@ -486,11 +551,24 @@ export default function AnalyticsPage({
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
   .callout { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; }
   .callout-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #3A4150; margin-bottom: 4px; }
+  .summary-box { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+  .summary-row { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid #e5e7eb; font-size: 12px; }
+  .summary-row:first-child { border-top: none; }
   @page { margin: 16mm 14mm; }
 </style>
 </head><body>
 <h1>${dealershipName}</h1>
 <p class="sub">Analytics · ${rangeLabel} · Exported ${now}</p>
+
+<h2 style="margin-top:0;">Executive Summary</h2>
+<div class="summary-box">${summaryRows}</div>
+
+${stats.needsAttention.length > 0 ? `
+<h2>Needs Attention (${stats.needsAttention.length})</h2>
+<table>
+  <thead><tr><th>Vehicle</th><th style="text-align:right;">Days over threshold</th></tr></thead>
+  <tbody>${needsAttentionRows}</tbody>
+</table>` : ''}
 
 <div class="hero">
   <div class="hero-sub">TURN RATE (SERVICE → PRICE FOR LOT)</div>
@@ -555,6 +633,71 @@ ${stats.topPerformers.length > 0 ? `
     const board = boards.find((b) => b.key === stats.bottleneck!.board);
     const stage = board?.stages.find((s) => s.key === stats.bottleneck!.stage);
     return stage?.label ?? stats.bottleneck.stage;
+  }
+
+  // Turns the same numbers already computed above into short, plain-
+  // language bullets — deliberately built from the exact stats already on
+  // this page (nothing new is calculated here except the trend math),
+  // so the summary can never quietly disagree with the detailed cards
+  // below it.
+  type Insight = { emoji: string; text: string };
+
+  function buildExecutiveSummary(): Insight[] {
+    const insights: Insight[] = [];
+
+    // Turn rate + trend vs. the immediately preceding period of equal length.
+    if (stats.avgTurnTime === null) {
+      insights.push({ emoji: '🟡', text: 'No vehicles completed Price for Lot in this period yet.' });
+    } else if (stats.previousAvgTurnTime === null) {
+      insights.push({
+        emoji: '🟡',
+        text: `Turn rate is averaging ${stats.avgTurnTime.toFixed(1)} days. Not enough history yet to show a trend.`,
+      });
+    } else {
+      const delta = stats.previousAvgTurnTime - stats.avgTurnTime; // positive = current period is faster
+      if (delta > 0.1) {
+        insights.push({
+          emoji: '🟢',
+          text: `Turn rate is improving. Average turn time is ${stats.avgTurnTime.toFixed(1)} days, ${delta.toFixed(1)} days faster than the previous period.`,
+        });
+      } else if (delta < -0.1) {
+        insights.push({
+          emoji: '🔴',
+          text: `Turn rate has slowed. Average turn time is ${stats.avgTurnTime.toFixed(1)} days, ${Math.abs(delta).toFixed(1)} days slower than the previous period.`,
+        });
+      } else {
+        insights.push({
+          emoji: '🟡',
+          text: `Turn rate is steady at ${stats.avgTurnTime.toFixed(1)} days, about the same as the previous period.`,
+        });
+      }
+    }
+
+    // Needs-attention count.
+    if (stats.agingRedCount > 0) {
+      insights.push({
+        emoji: '🔴',
+        text: `${stats.agingRedCount} vehicle${stats.agingRedCount === 1 ? '' : 's'} require${stats.agingRedCount === 1 ? 's' : ''} immediate attention — past the dealership's aging threshold.`,
+      });
+    } else {
+      insights.push({ emoji: '🟢', text: "No vehicles are currently past the dealership's aging threshold." });
+    }
+
+    // Bottleneck stage — only shown when there's real data behind it.
+    if (stats.bottleneck) {
+      insights.push({
+        emoji: '🟡',
+        text: `${bottleneckLabel()} is currently the slowest stage, averaging ${stats.bottleneck.avgDays.toFixed(1)} days.`,
+      });
+    }
+
+    // Carrying cost — always shown, even at $0, since it's still a real fact.
+    insights.push({
+      emoji: '💰',
+      text: `Estimated carrying cost of active inventory is $${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}.`,
+    });
+
+    return insights;
   }
 
   return (
@@ -672,6 +815,44 @@ ${stats.topPerformers.length > 0 ? `
         <p className="text-steel text-sm p-4">Loading…</p>
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Executive Summary — built for a 30-second glance. Deliberately
+              placed above everything else, but nothing below it is removed
+              or altered; this is a summary layer, not a replacement. */}
+          <div>
+            <h2 className="font-display font-semibold text-ink text-sm mb-2">Executive Summary</h2>
+            <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+              {buildExecutiveSummary().map((insight, i) => (
+                <div key={i} className="flex items-start gap-2.5 px-3 py-2.5">
+                  <span className="text-base leading-none flex-shrink-0 mt-0.5">{insight.emoji}</span>
+                  <p className="text-sm text-ink leading-snug">{insight.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {stats.needsAttention.length > 0 && (
+            <div>
+              <h2 className="font-display font-semibold text-ink text-sm mb-2">
+                Needs Attention ({stats.needsAttention.length})
+              </h2>
+              <div className="border border-signal-red/30 rounded-lg divide-y divide-gray-100">
+                {stats.needsAttention.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => onNavigateToVehicle?.(v.id, v.board)}
+                    disabled={!onNavigateToVehicle}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
+                  >
+                    <span className="text-sm text-ink truncate">{v.label}</span>
+                    <span className="text-xs text-signal-red font-medium tabular flex-shrink-0">
+                      {v.days.toFixed(1)}d →
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="bg-ink rounded-xl p-5 text-white">
             <p className="text-xs text-mist uppercase tracking-wide mb-1">Turn Rate (Service → Price for Lot)</p>
             <p className="font-display text-3xl font-bold">{formatDays(stats.avgTurnTime)}</p>

@@ -33,11 +33,15 @@ export default function DealerBoard({
   isOwner,
   isManager,
   refreshKey,
+  navigateTarget,
+  onNavigateHandled,
 }: {
   dealershipId: string;
   isOwner: boolean;
   isManager: boolean;
   refreshKey?: number;
+  navigateTarget?: { vehicleId: string; board: string } | null;
+  onNavigateHandled?: () => void;
 }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [boards, setBoards] = useState<BoardConfig[]>([]);
@@ -130,6 +134,24 @@ export default function DealerBoard({
     const s = b?.stages.find((st) => st.key === vehicle.stage);
     return b ? `${b.label}${s ? ` · ${s.label}` : ''}` : vehicle.board;
   }
+
+  // Handles "navigate to this vehicle" requests coming from outside the
+  // board entirely — right now that's just Analytics' Needs Attention
+  // panel, handed off through Dashboard (the shared parent of both, since
+  // Analytics and the board are separate siblings, not nested). Reuses
+  // the exact same scroll-and-highlight mechanism search results already
+  // use, so a vehicle opened this way gets identical treatment.
+  useEffect(() => {
+    if (!navigateTarget) return;
+    if (navigateTarget.board !== activeBoardKey) {
+      pendingScrollVehicleId.current = navigateTarget.vehicleId;
+      setActiveBoardKey(navigateTarget.board);
+    } else {
+      setTimeout(() => scrollToAndHighlight(navigateTarget.vehicleId), 200);
+    }
+    onNavigateHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigateTarget]);
 
   // A small activation distance means a normal tap (e.g. opening the dropdown)
   // doesn't accidentally start a drag — only a deliberate press-and-move does.
