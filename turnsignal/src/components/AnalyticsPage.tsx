@@ -4,6 +4,8 @@ import { BoardConfig, fetchBoards } from '../lib/boards';
 import { isAgingRed } from '../lib/aging';
 import { carryingCostSoFar } from '../lib/dates';
 import { computePriorityScores, vehicleShortLabel } from '../lib/priorityScoring';
+import TodaysPrioritiesModal from './TodaysPrioritiesModal';
+import RecommendationsModal from './RecommendationsModal';
 
 // ── Data layer ───────────────────────────────────────────────────────────
 // Fetching and stats computation are kept fully separate from rendering
@@ -112,12 +114,6 @@ function vehicleLabel(v: VehicleRow): string {
   return `${v.stock_number ? v.stock_number + '-' : ''}${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim();
 }
 
-function locationLabelForRow(v: { board: string; stage: string }, boards: BoardConfig[]): string {
-  const b = boards.find((bd) => bd.key === v.board);
-  const s = b?.stages.find((st) => st.key === v.stage);
-  return b ? `${b.label}${s ? ` · ${s.label}` : ''}` : v.board;
-}
-
 export default function AnalyticsPage({
   dealershipId,
   dealershipName,
@@ -140,6 +136,8 @@ export default function AnalyticsPage({
   const [usedRateInput, setUsedRateInput] = useState('0');
   const [savingRates, setSavingRates] = useState(false);
   const [showRateSettings, setShowRateSettings] = useState(false);
+  const [prioritiesModalOpen, setPrioritiesModalOpen] = useState(false);
+  const [recommendationsModalOpen, setRecommendationsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<RangeKey>('month');
@@ -460,17 +458,23 @@ export default function AnalyticsPage({
 
     // ── Priority Scores + Today's Priorities ──────────────────────────
     // Rule-based, fully explainable — see lib/priorityScoring.ts for the
-    // exact point math. Spans every active vehicle on every board, not
-    // just Main Board, since a loaner overdue on the Loaners board is
-    // just as real a priority as one stuck in Service.
+    // exact point math. Spans every active vehicle on every board except
+    // Loaners, which is excluded here the same way and for the same
+    // reason it's excluded from carrying cost — those vehicles are
+    // already on the lot, not stuck in recon — UNLESS one is still
+    // waiting on title, since that's a real, live priority either way.
     const priorityResults = computePriorityScores(
-      vehicles.filter((v) => !v.completed),
+      vehicles.filter((v) => !v.completed && (v.board !== 'loaners' || v.title_status === 'waiting')),
       yellowDays,
       redDays,
       newRatePerDay,
       usedRatePerDay
     );
-    const todaysPriorities = priorityResults.filter((r) => r.score > 0).slice(0, 5);
+    // Kept at 10 rather than 5 now that the full list lives behind its
+    // own "Today's Priorities" drill-in instead of directly on the main
+    // page — no reason to hold back detail once it's not competing for
+    // space with everything else.
+    const todaysPriorities = priorityResults.filter((r) => r.score > 0).slice(0, 10);
 
     // ── Stage Health Dashboard ──────────────────────────────────────────
     // One health score per Main Board stage, 0-100, where higher is
@@ -574,81 +578,37 @@ export default function AnalyticsPage({
     const carryingCostChangeVsPrevious =
       previousPeriodCarryingCost !== null ? periodCarryingCost - previousPeriodCarryingCost : null;
 
-    // A blended per-day rate across current active inventory — powers the
-    // "every additional day costs about $X" narrative sentence.
-    const activeNewCount = vehicles.filter((v) => !v.completed && v.is_new && v.board !== 'loaners').length;
-    const activeUsedCount = vehicles.filter((v) => !v.completed && !v.is_new && v.board !== 'loaners').length;
-    const blendedDailyRate =
-      activeNewCount + activeUsedCount > 0
-        ? (activeNewCount * newRatePerDay + activeUsedCount * usedRatePerDay) / (activeNewCount + activeUsedCount)
-        : null;
+    // ── Turn Rate Score ──────────────────────────────────────────────────
+    // Replaces the earlier multi-category "Dealership Performance Score" —
+    // that blended five separate judgment calls into one number, which
+    // made it hard to fully trust. This is simpler and more honest: how
+    // does the CURRENT period's turn rate compare to this dealership's own
+    // all-time average? 100 means performing at or better than your own
+    // historical norm; it drops as the current period runs slower than
+    // that norm. Nothing here is compared against any outside benchmark —
+    // only against this dealership's own real history.
+    const allTimeTurnTimes: number[] = [];
+    vehicles.forEach((v) => {
+      if (v.stage !== 'price_for_lot' || !v.completed || !v.completed_at) return;
+      const serviceEntered = serviceEnteredByVehicle.get(v.id);
+      if (!serviceEntered) return;
+      allTimeTurnTimes.push((new Date(v.completed_at).getTime() - serviceEntered.getTime()) / 86400000);
+    });
+    const allTimeAvgTurnTime = allTimeTurnTimes.length
+      ? allTimeTurnTimes.reduce((a, b) => a + b, 0) / allTimeTurnTimes.length
+      : null;
 
-    // ── Dealership Performance Score ────────────────────────────────────
-    // Five categories, 20 points each, no letter grade — just the number
-    // and exactly where each category's points came from. A category with
-    // no real data yet is left out of both the score and the max possible,
-    // rather than guessed at or defaulted to a misleading value.
-    const categories: { label: string; points: number; max: number; detail: string }[] = [];
-
-    if (previousAvgTurnTime !== null && avgTurnTime !== null) {
-      const delta = previousAvgTurnTime - avgTurnTime;
-      const pts = delta > 0.1 ? 20 : delta < -0.1 ? 8 : 14;
-      categories.push({
-        label: 'Turn Rate',
-        points: pts,
-        max: 20,
-        detail: delta > 0.1 ? 'improving vs. previous period' : delta < -0.1 ? 'slower vs. previous period' : 'steady vs. previous period',
-      });
+    let turnRateScore: number | null = null;
+    let turnRateScoreDetail: string | null = null;
+    if (allTimeAvgTurnTime !== null && avgTurnTime !== null && allTimeAvgTurnTime > 0) {
+      const ratio = avgTurnTime / allTimeAvgTurnTime;
+      turnRateScore = Math.round(Math.max(0, Math.min(100, 100 - (ratio - 1) * 100)));
+      const pctDiff = Math.abs((ratio - 1) * 100);
+      turnRateScoreDetail =
+        ratio <= 1.02
+          ? `${pctDiff.toFixed(0)}% faster than your all-time average of ${allTimeAvgTurnTime.toFixed(1)} days`
+          : `${pctDiff.toFixed(0)}% slower than your all-time average of ${allTimeAvgTurnTime.toFixed(1)} days`;
     }
-
-    if (mainBoardActive > 0 || agingRedCount > 0) {
-      const ratio = agingRedCount / Math.max(1, mainBoardActive);
-      const pts = Math.round(20 * (1 - Math.min(1, ratio)));
-      categories.push({
-        label: 'Vehicle Aging',
-        points: pts,
-        max: 20,
-        detail: `${agingRedCount} of ${mainBoardActive} active vehicles are past the aging target`,
-      });
-    }
-
-    if (stageHealth.length > 0) {
-      const avgHealth = stageHealth.reduce((a, b) => a + b.health, 0) / stageHealth.length;
-      categories.push({
-        label: 'Stage Efficiency',
-        points: Math.round((avgHealth / 100) * 20),
-        max: 20,
-        detail: `average stage health is ${Math.round(avgHealth)}/100`,
-      });
-    }
-
-    if (addedInRange > 0 || turnTimes.length > 0) {
-      const ratio = turnTimes.length / Math.max(1, addedInRange);
-      categories.push({
-        label: 'Completion Rate',
-        points: Math.min(20, Math.round(ratio * 20)),
-        max: 20,
-        detail: `${turnTimes.length} completed vs. ${addedInRange} added this period`,
-      });
-    }
-
-    if (carryingCostChangeVsPrevious !== null) {
-      const pts = carryingCostChangeVsPrevious <= 0 ? 20 : carryingCostChangeVsPrevious < periodCarryingCost * 0.15 ? 12 : 6;
-      categories.push({
-        label: 'Carrying Cost',
-        points: pts,
-        max: 20,
-        detail:
-          carryingCostChangeVsPrevious <= 0
-            ? `down $${Math.abs(carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the previous period`
-            : `up $${carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the previous period`,
-      });
-    }
-
-    const dealershipScore =
-      categories.length > 0
-        ? Math.round((categories.reduce((sum, c) => sum + c.points, 0) / categories.reduce((sum, c) => sum + c.max, 0)) * 100)
-        : null;
 
     // ── Recommendations Engine ──────────────────────────────────────────
     // Predefined conditions only — every recommendation names the exact
@@ -689,22 +649,6 @@ export default function AnalyticsPage({
     // tracking a trend over time than the raw count alone.
     const damageRate = vehicles.length > 0 ? (damagedCount / vehicles.length) * 100 : null;
 
-    // Who's actually getting cars through, this period — a simple
-    // completions leaderboard. Deliberately just a count, not a claimed
-    // "performance" score: clicking complete isn't always exactly the
-    // same person who did every bit of the work, so this answers "who's
-    // closing out the most cars," not a stricter productivity claim.
-    const completionsByPerson = new Map<string, number>();
-    vehicles.forEach((v) => {
-      if (!v.completed || !v.completed_at || !inRange(v.completed_at)) return;
-      const name = v.completed_by_name ?? 'Unknown';
-      completionsByPerson.set(name, (completionsByPerson.get(name) ?? 0) + 1);
-    });
-    const topPerformers = Array.from(completionsByPerson.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-
     return {
       currentCounts,
       avgDaysFor,
@@ -726,15 +670,13 @@ export default function AnalyticsPage({
       periodCarryingCost,
       previousPeriodCarryingCost,
       carryingCostChangeVsPrevious,
-      blendedDailyRate,
       avgNewCarryingCost,
       avgUsedCarryingCost,
       avgTransitTime,
-      topPerformers,
       todaysPriorities,
       stageHealth,
-      dealershipScore,
-      scoreCategories: categories,
+      turnRateScore,
+      turnRateScoreDetail,
       recommendations,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -756,10 +698,6 @@ export default function AnalyticsPage({
           </tr>`;
         })
       )
-      .join('');
-
-    const performerRows = stats.topPerformers
-      .map((p) => `<tr><td style="padding:5px 10px;border-top:1px solid #e5e7eb;">${p.name}</td><td style="padding:5px 10px;border-top:1px solid #e5e7eb;text-align:right;">${p.count}</td></tr>`)
       .join('');
 
     const summaryRows = buildExecutiveSummary()
@@ -830,7 +768,7 @@ ${stats.needsAttention.length > 0 ? `
 
 <div class="two">
   <div class="stat"><div class="stat-num">$${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div class="stat-label">Total carrying cost right now</div></div>
-  <div class="stat"><div class="stat-num">$${stats.periodCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div class="stat-label">Carrying cost this period</div></div>
+  <div class="stat"><div class="stat-num${stats.carryingCostChangeVsPrevious !== null && stats.carryingCostChangeVsPrevious > 0 ? ' red' : ''}">${stats.carryingCostChangeVsPrevious !== null ? (stats.carryingCostChangeVsPrevious <= 0 ? '−' : '+') + '$' + Math.abs(stats.carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</div><div class="stat-label">${stats.carryingCostChangeVsPrevious !== null && stats.carryingCostChangeVsPrevious <= 0 ? 'Avoided' : 'Added'} vs. previous period</div></div>
 </div>
 
 <div class="two">
@@ -848,13 +786,6 @@ ${stats.needsAttention.length > 0 ? `
   <thead><tr><th>Stage</th><th style="text-align:center;">Now</th><th style="text-align:right;">Avg. time</th></tr></thead>
   <tbody>${stageRows}</tbody>
 </table>
-
-${stats.topPerformers.length > 0 ? `
-<h2>Completions this period</h2>
-<table>
-  <thead><tr><th>Person</th><th style="text-align:right;">Completed</th></tr></thead>
-  <tbody>${performerRows}</tbody>
-</table>` : ''}
 
 <p style="font-size:10px;color:#9ca3af;margin-top:32px;">Generated by TurnSignal</p>
 </body></html>`;
@@ -1073,33 +1004,22 @@ ${stats.topPerformers.length > 0 ? `
           </div>
 
           {stats.todaysPriorities.length > 0 && (
-            <div>
-              <h2 className="font-display font-semibold text-ink text-sm mb-2">Today's Priorities</h2>
-              <div className="space-y-2">
-                {stats.todaysPriorities.map((p, i) => (
-                  <button
-                    key={p.vehicle.id}
-                    onClick={() => onNavigateToVehicle?.(p.vehicle.id, p.vehicle.board)}
-                    disabled={!onNavigateToVehicle}
-                    className="w-full text-left border border-gray-200 rounded-lg p-3 hover:bg-asphalt disabled:hover:bg-transparent"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-xs text-steel mb-0.5">#{i + 1} · {locationLabelForRow(p.vehicle, boards)}</p>
-                        <p className="font-display font-semibold text-ink truncate">{vehicleShortLabel(p.vehicle)}</p>
-                      </div>
-                      <div className="flex-shrink-0 w-11 h-11 rounded-full bg-ink text-white flex items-center justify-center">
-                        <span className="font-display font-bold text-sm tabular">{p.score}</span>
-                      </div>
-                    </div>
-                    <p className="text-xs text-steel mt-1.5">
-                      {p.reasons.map((r) => r.label).join(' · ') || 'No contributing factors'}
-                    </p>
-                    <p className="text-xs text-signal-blue font-medium mt-1">→ {p.recommendedAction}</p>
-                  </button>
-                ))}
+            <button
+              onClick={() => setPrioritiesModalOpen(true)}
+              className="w-full text-left border border-gray-200 rounded-lg p-4 hover:bg-asphalt"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="font-display font-semibold text-ink text-sm">
+                    Today's Priorities ({stats.todaysPriorities.length})
+                  </h2>
+                  <p className="text-xs text-steel mt-1 truncate">
+                    Top: {vehicleShortLabel(stats.todaysPriorities[0].vehicle)} — score {stats.todaysPriorities[0].score}
+                  </p>
+                </div>
+                <span className="text-steel flex-shrink-0">→</span>
               </div>
-            </div>
+            </button>
           )}
 
           {stats.needsAttention.length > 0 && (
@@ -1121,31 +1041,6 @@ ${stats.topPerformers.length > 0 ? `
                     </span>
                   </button>
                 ))}
-              </div>
-            </div>
-          )}
-
-          {stats.dealershipScore !== null && (
-            <div>
-              <h2 className="font-display font-semibold text-ink text-sm mb-2">Dealership Performance Score</h2>
-              <div className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="w-16 h-16 rounded-full bg-ink text-white flex items-center justify-center flex-shrink-0">
-                    <span className="font-display font-bold text-xl tabular">{stats.dealershipScore}</span>
-                  </div>
-                  <p className="text-xs text-steel">
-                    Out of 100, built only from categories with enough data to score fairly right now.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  {stats.scoreCategories.map((c) => (
-                    <div key={c.label} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="text-ink">{c.label}</span>
-                      <span className="text-steel text-xs">{c.detail}</span>
-                      <span className="tabular font-medium text-ink flex-shrink-0">{c.points}/{c.max}</span>
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
           )}
@@ -1178,50 +1073,23 @@ ${stats.topPerformers.length > 0 ? `
             </div>
           )}
 
-          <div>
-            <h2 className="font-display font-semibold text-ink text-sm mb-2">Lost Money Dashboard</h2>
-            <div className="border border-gray-200 rounded-lg p-4">
-              <p className="text-sm text-ink mb-3">
-                {stats.blendedDailyRate !== null
-                  ? `Every additional day active inventory remains in recon is currently estimated to add approximately $${stats.blendedDailyRate.toLocaleString(undefined, { maximumFractionDigits: 0 })} in carrying costs.`
-                  : 'Set carrying cost rates (💰 Rates above) to see a daily cost estimate.'}
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-asphalt rounded-lg p-3">
-                  <p className="text-xl font-display font-bold text-ink tabular">
-                    ${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                  </p>
-                  <p className="text-xs text-steel">Current total carrying cost</p>
-                </div>
-                <div className="bg-asphalt rounded-lg p-3">
-                  <p className="text-xl font-display font-bold text-ink tabular">
-                    ${stats.periodCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                  </p>
-                  <p className="text-xs text-steel">This period</p>
-                </div>
-              </div>
-              {stats.carryingCostChangeVsPrevious !== null && (
-                <p className={`text-xs mt-3 font-medium ${stats.carryingCostChangeVsPrevious <= 0 ? 'text-signal-green' : 'text-signal-red'}`}>
-                  {stats.carryingCostChangeVsPrevious <= 0
-                    ? `$${Math.abs(stats.carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 })} avoided vs. the previous period`
-                    : `$${stats.carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} more than the previous period`}
-                </p>
-              )}
-            </div>
-          </div>
-
           {stats.recommendations.length > 0 && (
-            <div>
-              <h2 className="font-display font-semibold text-ink text-sm mb-2">Recommendations</h2>
-              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                {stats.recommendations.map((r, i) => (
-                  <div key={i} className="flex items-start gap-2.5 px-3 py-2.5">
-                    <span className="text-base leading-none flex-shrink-0 mt-0.5">{r.emoji}</span>
-                    <p className="text-sm text-ink leading-snug">{r.text}</p>
-                  </div>
-                ))}
+            <button
+              onClick={() => setRecommendationsModalOpen(true)}
+              className="w-full text-left border border-gray-200 rounded-lg p-4 hover:bg-asphalt"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="font-display font-semibold text-ink text-sm">
+                    Recommendations ({stats.recommendations.length})
+                  </h2>
+                  <p className="text-xs text-steel mt-1 truncate">
+                    {stats.recommendations[0].emoji} {stats.recommendations[0].text}
+                  </p>
+                </div>
+                <span className="text-steel flex-shrink-0">→</span>
               </div>
-            </div>
+            </button>
           )}
 
           <div className="bg-ink rounded-xl p-5 text-white">
@@ -1236,6 +1104,18 @@ ${stats.topPerformers.length > 0 ? `
               <p className="font-display text-xl font-semibold">{formatDays(stats.avgTransitTime)}</p>
             </div>
           </div>
+
+          {stats.turnRateScore !== null && (
+            <div className="border border-gray-200 rounded-lg p-3 flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-ink text-white flex items-center justify-center flex-shrink-0">
+                <span className="font-display font-bold text-base tabular">{stats.turnRateScore}</span>
+              </div>
+              <div className="min-w-0">
+                <p className="font-display font-semibold text-ink text-sm">Turn Rate Score</p>
+                <p className="text-xs text-steel">{stats.turnRateScoreDetail}</p>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-asphalt rounded-lg p-3">
@@ -1286,10 +1166,26 @@ ${stats.topPerformers.length > 0 ? `
               <p className="text-xs text-steel">Total carrying cost right now</p>
             </div>
             <div className="bg-asphalt rounded-lg p-3">
-              <p className="text-2xl font-display font-bold text-ink tabular">
-                ${stats.periodCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </p>
-              <p className="text-xs text-steel">Carrying cost added this period</p>
+              {stats.carryingCostChangeVsPrevious !== null ? (
+                <>
+                  <p
+                    className={`text-2xl font-display font-bold tabular ${
+                      stats.carryingCostChangeVsPrevious <= 0 ? 'text-signal-green' : 'text-signal-red'
+                    }`}
+                  >
+                    {stats.carryingCostChangeVsPrevious <= 0 ? '−' : '+'}$
+                    {Math.abs(stats.carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </p>
+                  <p className="text-xs text-steel">
+                    {stats.carryingCostChangeVsPrevious <= 0 ? 'Avoided' : 'Added'} vs. previous period
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-2xl font-display font-bold text-gray-300">—</p>
+                  <p className="text-xs text-steel">Not enough history yet vs. previous period</p>
+                </>
+              )}
             </div>
           </div>
 
@@ -1331,23 +1227,6 @@ ${stats.topPerformers.length > 0 ? `
             </div>
           </div>
 
-          {stats.topPerformers.length > 0 && (
-            <div>
-              <h2 className="font-display font-semibold text-ink text-sm mb-2">Completions this period</h2>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                {stats.topPerformers.map((p, i) => (
-                  <div
-                    key={p.name}
-                    className={`flex items-center justify-between px-3 py-2 text-sm ${i > 0 ? 'border-t border-gray-100' : ''}`}
-                  >
-                    <span className="text-ink">{p.name}</span>
-                    <span className="tabular text-steel font-medium">{p.count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {boards.map((board) => (
             <div key={board.id}>
               <h2 className="font-display font-semibold text-ink text-sm mb-2">{board.label}</h2>
@@ -1375,6 +1254,22 @@ ${stats.topPerformers.length > 0 ? `
             </div>
           ))}
         </div>
+      )}
+
+      {prioritiesModalOpen && (
+        <TodaysPrioritiesModal
+          priorities={stats.todaysPriorities}
+          boards={boards}
+          onClose={() => setPrioritiesModalOpen(false)}
+          onNavigateToVehicle={onNavigateToVehicle}
+        />
+      )}
+
+      {recommendationsModalOpen && (
+        <RecommendationsModal
+          recommendations={stats.recommendations}
+          onClose={() => setRecommendationsModalOpen(false)}
+        />
       )}
     </div>
   );
