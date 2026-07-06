@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { BoardConfig, fetchBoards } from '../lib/boards';
 import { isAgingRed } from '../lib/aging';
 import { carryingCostSoFar } from '../lib/dates';
+import { computePriorityScores, vehicleShortLabel } from '../lib/priorityScoring';
 
 // ── Data layer ───────────────────────────────────────────────────────────
 // Fetching and stats computation are kept fully separate from rendering
@@ -109,6 +110,12 @@ type HistoryRow = {
 
 function vehicleLabel(v: VehicleRow): string {
   return `${v.stock_number ? v.stock_number + '-' : ''}${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim();
+}
+
+function locationLabelForRow(v: { board: string; stage: string }, boards: BoardConfig[]): string {
+  const b = boards.find((bd) => bd.key === v.board);
+  const s = b?.stages.find((st) => st.key === v.stage);
+  return b ? `${b.label}${s ? ` · ${s.label}` : ''}` : v.board;
 }
 
 export default function AnalyticsPage({
@@ -451,6 +458,233 @@ export default function AnalyticsPage({
 
     const addedInRange = vehicles.filter((v) => inRange(v.created_at)).length;
 
+    // ── Priority Scores + Today's Priorities ──────────────────────────
+    // Rule-based, fully explainable — see lib/priorityScoring.ts for the
+    // exact point math. Spans every active vehicle on every board, not
+    // just Main Board, since a loaner overdue on the Loaners board is
+    // just as real a priority as one stuck in Service.
+    const priorityResults = computePriorityScores(
+      vehicles.filter((v) => !v.completed),
+      yellowDays,
+      redDays,
+      newRatePerDay,
+      usedRatePerDay
+    );
+    const todaysPriorities = priorityResults.filter((r) => r.score > 0).slice(0, 5);
+
+    // ── Stage Health Dashboard ──────────────────────────────────────────
+    // One health score per Main Board stage, 0-100, where higher is
+    // healthier. Starts at 100 and only ever loses points for real,
+    // named reasons — never a fabricated baseline.
+    const mainBoard = boards.find((b) => b.key === 'main');
+    const previousStageDurations = new Map<string, number[]>();
+    if (previousBounds) {
+      history.forEach((row) => {
+        if (!row.exited_at) return;
+        const entered = new Date(row.entered_at);
+        if (entered < previousBounds.start || entered > previousBounds.end) return;
+        const key = `${row.board}::${row.stage}`;
+        const days = (new Date(row.exited_at).getTime() - entered.getTime()) / 86400000;
+        const arr = previousStageDurations.get(key) ?? [];
+        arr.push(days);
+        previousStageDurations.set(key, arr);
+      });
+    }
+
+    const stageHealth = (mainBoard?.stages ?? [])
+      .filter((s) => s.key !== 'inbound_trade_in')
+      .map((s) => {
+        const key = `main::${s.key}`;
+        const currentAvg = avgDaysFor('main', s.key);
+        const waitingCount = currentCounts.get(key) ?? 0;
+        const exceedingCount = vehicles.filter((v) => {
+          if (v.completed || v.board !== 'main' || v.stage !== s.key) return false;
+          const days = (Date.now() - new Date(v.stage_entered_at).getTime()) / 86400000;
+          return days > redDays;
+        }).length;
+
+        const prevArr = previousStageDurations.get(key);
+        const previousAvg = prevArr && prevArr.length > 0 ? prevArr.reduce((a, b) => a + b, 0) / prevArr.length : null;
+
+        let health = 100;
+        const reasons: string[] = [];
+
+        if (currentAvg !== null) {
+          const excessDays = Math.max(0, currentAvg - redDays);
+          if (excessDays > 0) {
+            const deduction = Math.min(40, Math.round(excessDays * 6));
+            health -= deduction;
+            reasons.push(`averaging ${excessDays.toFixed(1)} days over target`);
+          }
+        }
+        if (exceedingCount > 0) {
+          const deduction = Math.min(30, exceedingCount * 8);
+          health -= deduction;
+          reasons.push(`${exceedingCount} vehicle${exceedingCount === 1 ? '' : 's'} currently over target`);
+        }
+        if (previousAvg !== null && currentAvg !== null) {
+          const trendDelta = previousAvg - currentAvg; // positive = improved (faster)
+          if (trendDelta > 0.1) {
+            health = Math.min(100, health + Math.min(10, Math.round(trendDelta * 4)));
+          } else if (trendDelta < -0.1) {
+            health -= Math.min(20, Math.round(Math.abs(trendDelta) * 4));
+            reasons.push('slower than the previous period');
+          }
+        }
+        health = Math.max(0, Math.min(100, Math.round(health)));
+
+        const indicator: 'green' | 'yellow' | 'red' = health >= 70 ? 'green' : health >= 40 ? 'yellow' : 'red';
+        const recommendation =
+          reasons.length === 0
+            ? `${s.label} is operating efficiently.`
+            : `${s.label} is currently ${indicator === 'red' ? 'the slowest department' : 'running behind'} — ${reasons.join(', ')}. Consider prioritizing vehicles waiting in ${s.label}.`;
+
+        return {
+          key: s.key,
+          label: s.label,
+          health,
+          indicator,
+          avgDays: currentAvg,
+          waitingCount,
+          exceedingCount,
+          recommendation,
+        };
+      });
+
+    // ── Lost Money Dashboard extras ─────────────────────────────────────
+    // Carrying cost avoided (or added) vs. the immediately preceding
+    // period, plus a plain narrative sentence. No gross profit estimate —
+    // only known rate data already configured for this dealership.
+    let previousPeriodCarryingCost: number | null = null;
+    if (previousBounds) {
+      previousPeriodCarryingCost = vehicles
+        .filter((v) => v.board !== 'loaners' || v.title_status === 'waiting')
+        .reduce((sum, v) => {
+          const startDate = v.is_new ? v.recon_started_at : v.created_at;
+          if (!startDate) return sum;
+          const accrualStart = new Date(startDate);
+          const accrualEnd = v.completed && v.completed_at ? new Date(v.completed_at) : new Date();
+          const overlapStart = previousBounds.start > accrualStart ? previousBounds.start : accrualStart;
+          const overlapEnd = previousBounds.end < accrualEnd ? previousBounds.end : accrualEnd;
+          const overlapDays = Math.max(0, (overlapEnd.getTime() - overlapStart.getTime()) / 86400000);
+          const rate = v.is_new ? newRatePerDay : usedRatePerDay;
+          return sum + overlapDays * rate;
+        }, 0);
+    }
+    const carryingCostChangeVsPrevious =
+      previousPeriodCarryingCost !== null ? periodCarryingCost - previousPeriodCarryingCost : null;
+
+    // A blended per-day rate across current active inventory — powers the
+    // "every additional day costs about $X" narrative sentence.
+    const activeNewCount = vehicles.filter((v) => !v.completed && v.is_new && v.board !== 'loaners').length;
+    const activeUsedCount = vehicles.filter((v) => !v.completed && !v.is_new && v.board !== 'loaners').length;
+    const blendedDailyRate =
+      activeNewCount + activeUsedCount > 0
+        ? (activeNewCount * newRatePerDay + activeUsedCount * usedRatePerDay) / (activeNewCount + activeUsedCount)
+        : null;
+
+    // ── Dealership Performance Score ────────────────────────────────────
+    // Five categories, 20 points each, no letter grade — just the number
+    // and exactly where each category's points came from. A category with
+    // no real data yet is left out of both the score and the max possible,
+    // rather than guessed at or defaulted to a misleading value.
+    const categories: { label: string; points: number; max: number; detail: string }[] = [];
+
+    if (previousAvgTurnTime !== null && avgTurnTime !== null) {
+      const delta = previousAvgTurnTime - avgTurnTime;
+      const pts = delta > 0.1 ? 20 : delta < -0.1 ? 8 : 14;
+      categories.push({
+        label: 'Turn Rate',
+        points: pts,
+        max: 20,
+        detail: delta > 0.1 ? 'improving vs. previous period' : delta < -0.1 ? 'slower vs. previous period' : 'steady vs. previous period',
+      });
+    }
+
+    if (mainBoardActive > 0 || agingRedCount > 0) {
+      const ratio = agingRedCount / Math.max(1, mainBoardActive);
+      const pts = Math.round(20 * (1 - Math.min(1, ratio)));
+      categories.push({
+        label: 'Vehicle Aging',
+        points: pts,
+        max: 20,
+        detail: `${agingRedCount} of ${mainBoardActive} active vehicles are past the aging target`,
+      });
+    }
+
+    if (stageHealth.length > 0) {
+      const avgHealth = stageHealth.reduce((a, b) => a + b.health, 0) / stageHealth.length;
+      categories.push({
+        label: 'Stage Efficiency',
+        points: Math.round((avgHealth / 100) * 20),
+        max: 20,
+        detail: `average stage health is ${Math.round(avgHealth)}/100`,
+      });
+    }
+
+    if (addedInRange > 0 || turnTimes.length > 0) {
+      const ratio = turnTimes.length / Math.max(1, addedInRange);
+      categories.push({
+        label: 'Completion Rate',
+        points: Math.min(20, Math.round(ratio * 20)),
+        max: 20,
+        detail: `${turnTimes.length} completed vs. ${addedInRange} added this period`,
+      });
+    }
+
+    if (carryingCostChangeVsPrevious !== null) {
+      const pts = carryingCostChangeVsPrevious <= 0 ? 20 : carryingCostChangeVsPrevious < periodCarryingCost * 0.15 ? 12 : 6;
+      categories.push({
+        label: 'Carrying Cost',
+        points: pts,
+        max: 20,
+        detail:
+          carryingCostChangeVsPrevious <= 0
+            ? `down $${Math.abs(carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the previous period`
+            : `up $${carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the previous period`,
+      });
+    }
+
+    const dealershipScore =
+      categories.length > 0
+        ? Math.round((categories.reduce((sum, c) => sum + c.points, 0) / categories.reduce((sum, c) => sum + c.max, 0)) * 100)
+        : null;
+
+    // ── Recommendations Engine ──────────────────────────────────────────
+    // Predefined conditions only — every recommendation names the exact
+    // data that triggered it, right in the sentence itself.
+    const recommendations: { emoji: string; text: string }[] = [];
+
+    stageHealth.forEach((s) => {
+      if (s.indicator === 'red') {
+        recommendations.push({
+          emoji: '🔴',
+          text: `${s.label} average exceeds target (${formatDays(s.avgDays)} vs. a ${redDays}-day target) — consider reallocating attention there.`,
+        });
+      } else if (s.indicator === 'green' && s.avgDays !== null) {
+        recommendations.push({ emoji: '🟢', text: `${s.label} is operating efficiently, averaging ${formatDays(s.avgDays)}.` });
+      }
+    });
+
+    if (agingRedCount > 0 && previousAvgTurnTime !== null && avgTurnTime !== null && previousAvgTurnTime - avgTurnTime > 0.1) {
+      recommendations.push({ emoji: '🟢', text: 'Aging inventory is improving compared to the previous period.' });
+    }
+
+    const waitingOnTitleCount = vehicles.filter((v) => !v.completed && v.title_status === 'waiting').length;
+    if (waitingOnTitleCount > 0) {
+      recommendations.push({
+        emoji: '🟡',
+        text: `${waitingOnTitleCount} vehicle${waitingOnTitleCount === 1 ? ' is' : 's are'} waiting on title — follow up on paperwork to avoid further delay.`,
+      });
+    }
+
+    if (carryingCostChangeVsPrevious !== null && carryingCostChangeVsPrevious > 0) {
+      recommendations.push({
+        emoji: '🔴',
+        text: `Carrying cost increased by $${carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} compared to the previous period.`,
+      });
+    }
+
     // Damage rate as a share of total inventory — more useful for
     // tracking a trend over time than the raw count alone.
     const damageRate = vehicles.length > 0 ? (damagedCount / vehicles.length) * 100 : null;
@@ -490,13 +724,21 @@ export default function AnalyticsPage({
       needsAttention,
       totalCarryingCost,
       periodCarryingCost,
+      previousPeriodCarryingCost,
+      carryingCostChangeVsPrevious,
+      blendedDailyRate,
       avgNewCarryingCost,
       avgUsedCarryingCost,
       avgTransitTime,
       topPerformers,
+      todaysPriorities,
+      stageHealth,
+      dealershipScore,
+      scoreCategories: categories,
+      recommendations,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicles, history, yellowDays, redDays, newRatePerDay, usedRatePerDay, range, customStart, customEnd]);
+  }, [vehicles, history, boards, yellowDays, redDays, newRatePerDay, usedRatePerDay, range, customStart, customEnd]);
 
   function handleExportPDF() {
     const rangeLabel = RANGE_OPTIONS.find((r) => r.key === range)?.label ?? range;
@@ -830,6 +1072,36 @@ ${stats.topPerformers.length > 0 ? `
             </div>
           </div>
 
+          {stats.todaysPriorities.length > 0 && (
+            <div>
+              <h2 className="font-display font-semibold text-ink text-sm mb-2">Today's Priorities</h2>
+              <div className="space-y-2">
+                {stats.todaysPriorities.map((p, i) => (
+                  <button
+                    key={p.vehicle.id}
+                    onClick={() => onNavigateToVehicle?.(p.vehicle.id, p.vehicle.board)}
+                    disabled={!onNavigateToVehicle}
+                    className="w-full text-left border border-gray-200 rounded-lg p-3 hover:bg-asphalt disabled:hover:bg-transparent"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs text-steel mb-0.5">#{i + 1} · {locationLabelForRow(p.vehicle, boards)}</p>
+                        <p className="font-display font-semibold text-ink truncate">{vehicleShortLabel(p.vehicle)}</p>
+                      </div>
+                      <div className="flex-shrink-0 w-11 h-11 rounded-full bg-ink text-white flex items-center justify-center">
+                        <span className="font-display font-bold text-sm tabular">{p.score}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-steel mt-1.5">
+                      {p.reasons.map((r) => r.label).join(' · ') || 'No contributing factors'}
+                    </p>
+                    <p className="text-xs text-signal-blue font-medium mt-1">→ {p.recommendedAction}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {stats.needsAttention.length > 0 && (
             <div>
               <h2 className="font-display font-semibold text-ink text-sm mb-2">
@@ -848,6 +1120,105 @@ ${stats.topPerformers.length > 0 ? `
                       {v.days.toFixed(1)}d →
                     </span>
                   </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {stats.dealershipScore !== null && (
+            <div>
+              <h2 className="font-display font-semibold text-ink text-sm mb-2">Dealership Performance Score</h2>
+              <div className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center gap-4 mb-3">
+                  <div className="w-16 h-16 rounded-full bg-ink text-white flex items-center justify-center flex-shrink-0">
+                    <span className="font-display font-bold text-xl tabular">{stats.dealershipScore}</span>
+                  </div>
+                  <p className="text-xs text-steel">
+                    Out of 100, built only from categories with enough data to score fairly right now.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {stats.scoreCategories.map((c) => (
+                    <div key={c.label} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-ink">{c.label}</span>
+                      <span className="text-steel text-xs">{c.detail}</span>
+                      <span className="tabular font-medium text-ink flex-shrink-0">{c.points}/{c.max}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {stats.stageHealth.length > 0 && (
+            <div>
+              <h2 className="font-display font-semibold text-ink text-sm mb-2">Stage Health — Main Board</h2>
+              <div className="space-y-2">
+                {stats.stageHealth.map((s) => (
+                  <div key={s.key} className="border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                            s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
+                          }`}
+                        />
+                        <p className="font-display font-semibold text-ink truncate">{s.label}</p>
+                      </div>
+                      <span className="font-display font-bold text-ink tabular flex-shrink-0">{s.health}</span>
+                    </div>
+                    <p className="text-xs text-steel tabular">
+                      {formatDays(s.avgDays)} average · {s.waitingCount} waiting
+                      {s.exceedingCount > 0 && ` · ${s.exceedingCount} over target`}
+                    </p>
+                    <p className="text-xs text-steel mt-1">{s.recommendation}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <h2 className="font-display font-semibold text-ink text-sm mb-2">Lost Money Dashboard</h2>
+            <div className="border border-gray-200 rounded-lg p-4">
+              <p className="text-sm text-ink mb-3">
+                {stats.blendedDailyRate !== null
+                  ? `Every additional day active inventory remains in recon is currently estimated to add approximately $${stats.blendedDailyRate.toLocaleString(undefined, { maximumFractionDigits: 0 })} in carrying costs.`
+                  : 'Set carrying cost rates (💰 Rates above) to see a daily cost estimate.'}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-asphalt rounded-lg p-3">
+                  <p className="text-xl font-display font-bold text-ink tabular">
+                    ${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </p>
+                  <p className="text-xs text-steel">Current total carrying cost</p>
+                </div>
+                <div className="bg-asphalt rounded-lg p-3">
+                  <p className="text-xl font-display font-bold text-ink tabular">
+                    ${stats.periodCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </p>
+                  <p className="text-xs text-steel">This period</p>
+                </div>
+              </div>
+              {stats.carryingCostChangeVsPrevious !== null && (
+                <p className={`text-xs mt-3 font-medium ${stats.carryingCostChangeVsPrevious <= 0 ? 'text-signal-green' : 'text-signal-red'}`}>
+                  {stats.carryingCostChangeVsPrevious <= 0
+                    ? `$${Math.abs(stats.carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 })} avoided vs. the previous period`
+                    : `$${stats.carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} more than the previous period`}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {stats.recommendations.length > 0 && (
+            <div>
+              <h2 className="font-display font-semibold text-ink text-sm mb-2">Recommendations</h2>
+              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                {stats.recommendations.map((r, i) => (
+                  <div key={i} className="flex items-start gap-2.5 px-3 py-2.5">
+                    <span className="text-base leading-none flex-shrink-0 mt-0.5">{r.emoji}</span>
+                    <p className="text-sm text-ink leading-snug">{r.text}</p>
+                  </div>
                 ))}
               </div>
             </div>
