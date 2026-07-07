@@ -18,6 +18,7 @@ export default function KanbanColumn({
   vehicles,
   highlightedVehicleId,
   onAnyCardModalOpenChange,
+  photoCounts,
   onAddClick,
   onMoved,
 }: {
@@ -33,6 +34,7 @@ export default function KanbanColumn({
   vehicles: Vehicle[];
   highlightedVehicleId?: string | null;
   onAnyCardModalOpenChange?: (open: boolean) => void;
+  photoCounts: Map<string, number>;
   onAddClick: () => void;
   onMoved: () => void;
 }) {
@@ -94,6 +96,7 @@ export default function KanbanColumn({
                     isManager={isManager}
                     highlighted={v.id === highlightedVehicleId}
                     onAnyModalOpenChange={onAnyCardModalOpenChange}
+                    photoCount={photoCounts.get(v.id) ?? 0}
                     onMoved={onMoved}
                   />
                 ))}
@@ -124,6 +127,7 @@ export default function KanbanColumn({
                         isManager={isManager}
                         highlighted={v.id === highlightedVehicleId}
                         onAnyModalOpenChange={onAnyCardModalOpenChange}
+                        photoCount={photoCounts.get(v.id) ?? 0}
                         onMoved={onMoved}
                       />
                     ))}

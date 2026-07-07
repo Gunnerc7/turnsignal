@@ -5,6 +5,8 @@ import { isAgingRed } from '../lib/aging';
 import { carryingCostSoFar } from '../lib/dates';
 import { computePriorityScores, vehicleShortLabel } from '../lib/priorityScoring';
 import TodaysPrioritiesModal from './TodaysPrioritiesModal';
+import OverviewTile from './OverviewTile';
+import CompletionsTrendChart from './CompletionsTrendChart';
 
 // ── Data layer ───────────────────────────────────────────────────────────
 // Fetching and stats computation are kept fully separate from rendering
@@ -444,6 +446,27 @@ export default function AnalyticsPage({
 
     const addedInRange = vehicles.filter((v) => inRange(v.created_at)).length;
 
+    // ── Weekly completions trend (last 8 weeks) ──────────────────────────
+    // Deliberately independent of the Today/Week/Month picker above — this
+    // is a fixed trailing window so the shape of the trend stays stable
+    // and comparable regardless of what range is currently selected.
+    // Chosen specifically because it's something we can compute exactly
+    // from completed_at timestamps already in hand — a chart is only
+    // trustworthy if the data behind it is real, not approximated.
+    const weeklyTrend: { label: string; count: number }[] = [];
+    for (let i = 7; i >= 0; i--) {
+      const weekEnd = new Date();
+      weekEnd.setDate(weekEnd.getDate() - i * 7);
+      const weekStart = new Date(weekEnd);
+      weekStart.setDate(weekStart.getDate() - 7);
+      const count = vehicles.filter((v) => {
+        if (!v.completed || !v.completed_at) return false;
+        const d = new Date(v.completed_at);
+        return d >= weekStart && d < weekEnd;
+      }).length;
+      weeklyTrend.push({ label: weekEnd.toLocaleDateString([], { month: 'short', day: 'numeric' }), count });
+    }
+
     // ── Priority Scores + Today's Priorities ──────────────────────────
     // Rule-based, fully explainable — see lib/priorityScoring.ts for the
     // exact point math. Spans every active vehicle on every board except
@@ -601,6 +624,7 @@ export default function AnalyticsPage({
       todaysPriorities,
       stageHealth,
       waitingOnTitleCount,
+      weeklyTrend,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vehicles, history, boards, yellowDays, redDays, newRatePerDay, usedRatePerDay, range, customStart, customEnd]);
@@ -903,40 +927,87 @@ ${stats.todaysPriorities.length > 0 ? `
       {loading ? (
         <p className="text-steel text-sm p-4">Loading…</p>
       ) : (
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Executive Summary — built for a 30-second glance. Deliberately
-              placed above everything else, but nothing below it is removed
-              or altered; this is a summary layer, not a replacement. */}
-          <div>
-            <h2 className="font-display font-semibold text-ink text-sm mb-2">Executive Summary</h2>
-            <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-              {buildExecutiveSummary().map((insight, i) => (
-                <div key={i} className="flex items-start gap-2.5 px-3 py-2.5">
-                  <span className="text-base leading-none flex-shrink-0 mt-0.5">{insight.emoji}</span>
-                  <p className="text-sm text-ink leading-snug">{insight.text}</p>
-                </div>
-              ))}
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Time-sensitive callouts only — nothing permanent lives here,
+              so this stays empty (and invisible) most of the time. */}
+          {stats.waitingOnTitleCount > 0 && (
+            <div className="flex items-center gap-2 bg-signal-amber/10 border border-signal-amber/30 rounded-xl px-3 py-2.5">
+              <span className="text-base">🟡</span>
+              <p className="text-sm text-ink">
+                {stats.waitingOnTitleCount} vehicle{stats.waitingOnTitleCount === 1 ? ' is' : 's are'} waiting on
+                title — follow up on paperwork.
+              </p>
             </div>
+          )}
+          {stats.carryingCostChangeVsPrevious !== null && stats.carryingCostChangeVsPrevious > 0 && (
+            <div className="flex items-center gap-2 bg-signal-red/10 border border-signal-red/30 rounded-xl px-3 py-2.5">
+              <span className="text-base">🔴</span>
+              <p className="text-sm text-ink">
+                Carrying cost is up $
+                {stats.carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the
+                previous period.
+              </p>
+            </div>
+          )}
+
+          {/* The glance layer — four colorful, tappable tiles instead of
+              a column of text to read top to bottom. */}
+          <div className="grid grid-cols-2 gap-3">
+            <OverviewTile
+              icon="⏱️"
+              accent="blue"
+              value={formatDays(stats.avgTurnTime)}
+              label="Turn Rate"
+              trend={
+                stats.previousAvgTurnTime !== null && stats.avgTurnTime !== null
+                  ? {
+                      direction: stats.previousAvgTurnTime - stats.avgTurnTime > 0 ? 'up' : 'down',
+                      good: stats.previousAvgTurnTime - stats.avgTurnTime > 0,
+                      label:
+                        Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime) < 0.1
+                          ? 'Steady'
+                          : `${Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime).toFixed(1)}d vs. last period`,
+                    }
+                  : undefined
+              }
+            />
+            <OverviewTile
+              icon="💰"
+              accent="amber"
+              value={`$${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+              label="Carrying Cost"
+              trend={
+                stats.carryingCostChangeVsPrevious !== null
+                  ? {
+                      direction: stats.carryingCostChangeVsPrevious > 0 ? 'up' : 'down',
+                      good: stats.carryingCostChangeVsPrevious <= 0,
+                      label: `$${Math.abs(stats.carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. last period`,
+                    }
+                  : undefined
+              }
+            />
+            <OverviewTile
+              icon="🚩"
+              accent="red"
+              value={String(stats.todaysPriorities.length)}
+              label="Today's Priorities"
+              sublabel={stats.todaysPriorities.length > 0 ? 'Tap to view →' : undefined}
+              onClick={stats.todaysPriorities.length > 0 ? () => setPrioritiesModalOpen(true) : undefined}
+            />
+            <OverviewTile
+              icon="🩺"
+              accent="green"
+              value={
+                stats.stageHealth.length > 0
+                  ? String(Math.round(stats.stageHealth.reduce((a, b) => a + b.health, 0) / stats.stageHealth.length))
+                  : '—'
+              }
+              label="Stage Health Avg"
+              sublabel={stats.stageHealth.length > 0 ? 'See breakdown below ↓' : undefined}
+            />
           </div>
 
-          {stats.todaysPriorities.length > 0 && (
-            <button
-              onClick={() => setPrioritiesModalOpen(true)}
-              className="w-full text-left border border-gray-200 rounded-lg p-4 hover:bg-asphalt"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <h2 className="font-display font-semibold text-ink text-sm">
-                    Today's Priorities ({stats.todaysPriorities.length})
-                  </h2>
-                  <p className="text-xs text-steel mt-1 truncate">
-                    Top: {vehicleShortLabel(stats.todaysPriorities[0].vehicle)} — score {stats.todaysPriorities[0].score}
-                  </p>
-                </div>
-                <span className="text-steel flex-shrink-0">→</span>
-              </div>
-            </button>
-          )}
+          <CompletionsTrendChart data={stats.weeklyTrend} />
 
           {stats.stageHealth.length > 0 && (
             <div>
@@ -965,6 +1036,16 @@ ${stats.todaysPriorities.length > 0 ? `
               </div>
             </div>
           )}
+
+          {/* Everything below this line is the detailed report tier —
+              same data that's always been here, just clearly separated
+              from the glance layer above instead of blending into one
+              long scroll. */}
+          <div className="flex items-center gap-3 pt-1">
+            <div className="h-px bg-gray-200 flex-1" />
+            <p className="text-[11px] text-steel uppercase tracking-wider font-semibold">Full Report</p>
+            <div className="h-px bg-gray-200 flex-1" />
+          </div>
 
           <div className="bg-ink rounded-xl p-5 text-white">
             <p className="text-xs text-mist uppercase tracking-wide mb-1">Turn Rate (Service → Price for Lot)</p>

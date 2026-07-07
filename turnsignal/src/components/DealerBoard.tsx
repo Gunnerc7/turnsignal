@@ -44,6 +44,7 @@ export default function DealerBoard({
   onNavigateHandled?: () => void;
 }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [photoCounts, setPhotoCounts] = useState<Map<string, number>>(new Map());
   const [boards, setBoards] = useState<BoardConfig[]>([]);
   // Restore the last-active board from sessionStorage — this is what
   // survives iOS Safari tab discards and comes back to the right column
@@ -172,6 +173,20 @@ export default function DealerBoard({
       setError(vehiclesError.message);
     } else {
       setVehicles(data ?? []);
+      // One batched query for photo counts across every vehicle on the
+      // board, rather than a separate query per card — just the
+      // vehicle_id column is enough to tally counts client-side.
+      const ids = (data ?? []).map((v) => v.id);
+      if (ids.length > 0) {
+        const { data: photoRows } = await supabase.from('vehicle_photos').select('vehicle_id').in('vehicle_id', ids);
+        const counts = new Map<string, number>();
+        (photoRows ?? []).forEach((row) => {
+          counts.set(row.vehicle_id, (counts.get(row.vehicle_id) ?? 0) + 1);
+        });
+        setPhotoCounts(counts);
+      } else {
+        setPhotoCounts(new Map());
+      }
     }
     setLoading(false);
   }, [dealershipId]);
@@ -461,6 +476,7 @@ export default function DealerBoard({
                   isManager={isManager}
                   highlightedVehicleId={highlightedVehicleId}
                   onAnyCardModalOpenChange={handleAnyCardModalOpenChange}
+                  photoCounts={photoCounts}
                   vehicles={vehicles
                     .filter((v) => v.board === activeBoard.key && v.stage === stage.key)
                     .sort((a, b) => {
@@ -486,6 +502,7 @@ export default function DealerBoard({
                   usedRatePerDay={usedRatePerDay}
                   isOwner={isOwner}
                   isManager={isManager}
+                  photoCount={photoCounts.get(draggingVehicle.id) ?? 0}
                   onMoved={() => {}}
                 />
               </div>

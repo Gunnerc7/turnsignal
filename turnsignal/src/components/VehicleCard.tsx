@@ -61,6 +61,7 @@ export default function VehicleCard({
   isManager,
   highlighted,
   onAnyModalOpenChange,
+  photoCount = 0,
   onMoved,
 }: {
   vehicle: Vehicle;
@@ -73,6 +74,7 @@ export default function VehicleCard({
   isManager: boolean;
   highlighted?: boolean;
   onAnyModalOpenChange?: (open: boolean) => void;
+  photoCount?: number;
   onMoved: () => void;
 }) {
   const { session, userName } = useAuth();
@@ -332,14 +334,31 @@ export default function VehicleCard({
 
         <button
           onClick={() => setPhotosOpen(true)}
-          aria-label="View photos"
-          className="bg-gray-50 rounded-md px-2.5 text-steel"
+          aria-label={photoCount > 0 ? `View ${photoCount} photo${photoCount === 1 ? '' : 's'}` : 'View photos'}
+          className={`relative rounded-md px-2.5 ${
+            photoCount > 0 ? 'bg-signal-blue/10 text-signal-blue' : 'bg-gray-50 text-steel'
+          }`}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="1.5" y="3.5" width="13" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+            <rect
+              x="1.5"
+              y="3.5"
+              width="13"
+              height="10"
+              rx="1.5"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              fill={photoCount > 0 ? 'currentColor' : 'none'}
+              fillOpacity={photoCount > 0 ? 0.12 : 0}
+            />
             <circle cx="5.5" cy="7" r="1.2" stroke="currentColor" strokeWidth="1.1" />
             <path d="M2 12l3.5-3 2.5 2 2.5-3 3.5 4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
+          {photoCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-signal-blue text-white text-[10px] font-bold flex items-center justify-center">
+              {photoCount > 9 ? '9+' : photoCount}
+            </span>
+          )}
         </button>
 
         {canEditTitleStatus ? (
@@ -430,7 +449,10 @@ export default function VehicleCard({
               vehicleId={vehicle.id}
               dealershipId={vehicle.dealership_id}
               vehicleLabel={vehicleLabel}
-              onClose={() => setPhotosOpen(false)}
+              onClose={() => {
+                setPhotosOpen(false);
+                onMoved();
+              }}
             />
           )}
 
