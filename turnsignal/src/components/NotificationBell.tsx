@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { Notification } from '../lib/types';
@@ -113,46 +112,44 @@ export default function NotificationBell({
         )}
       </button>
 
-      {open &&
-        createPortal(
-          <>
-            <button
-              className="fixed inset-0 z-40 cursor-default"
-              aria-label="Close notifications"
-              onClick={() => setOpen(false)}
-            />
-            <div className="fixed left-4 right-4 top-28 max-w-sm mx-auto bg-white rounded-lg shadow-lift border border-gray-200 max-h-96 overflow-y-auto z-50">
-              <div className="px-3 py-2 border-b border-gray-100">
-                <p className="text-xs font-semibold text-steel uppercase tracking-wide">Notifications</p>
-              </div>
-              {navigateError && (
-                <p className="text-signal-red text-xs px-3 py-2 border-b border-gray-100">{navigateError}</p>
-              )}
-              {loading ? (
-                <p className="text-steel text-sm p-3">Loading…</p>
-              ) : notifications.length === 0 ? (
-                <p className="text-steel text-sm p-3">Nothing yet.</p>
-              ) : (
-                notifications.map((n) => (
-                  <button
-                    key={n.id}
-                    onClick={() => handleClick(n)}
-                    disabled={navigatingId === n.id}
-                    className={`w-full text-left px-3 py-2.5 border-b border-gray-50 last:border-0 disabled:opacity-60 ${
-                      n.read ? '' : 'bg-blue-50'
-                    }`}
-                  >
-                    <p className="text-sm text-ink">{n.message}</p>
-                    <p className="text-[11px] text-steel mt-0.5 tabular">
-                      {navigatingId === n.id ? 'Opening…' : formatWhen(n.created_at)}
-                    </p>
-                  </button>
-                ))
-              )}
+      {open && (
+        <>
+          <button
+            className="fixed inset-0 z-40 cursor-default"
+            aria-label="Close notifications"
+            onClick={() => setOpen(false)}
+          />
+          <div className="fixed left-4 right-4 top-28 max-w-sm mx-auto bg-white rounded-lg shadow-lift border border-gray-200 max-h-96 overflow-y-auto z-50">
+            <div className="px-3 py-2 border-b border-gray-100">
+              <p className="text-xs font-semibold text-steel uppercase tracking-wide">Notifications</p>
             </div>
-          </>,
-          document.body
-        )}
+            {navigateError && (
+              <p className="text-signal-red text-xs px-3 py-2 border-b border-gray-100">{navigateError}</p>
+            )}
+            {loading ? (
+              <p className="text-steel text-sm p-3">Loading…</p>
+            ) : notifications.length === 0 ? (
+              <p className="text-steel text-sm p-3">Nothing yet.</p>
+            ) : (
+              notifications.map((n) => (
+                <button
+                  key={n.id}
+                  onClick={() => handleClick(n)}
+                  disabled={navigatingId === n.id}
+                  className={`w-full text-left px-3 py-2.5 border-b border-gray-50 last:border-0 disabled:opacity-60 ${
+                    n.read ? '' : 'bg-blue-50'
+                  }`}
+                >
+                  <p className="text-sm text-ink">{n.message}</p>
+                  <p className="text-[11px] text-steel mt-0.5 tabular">
+                    {navigatingId === n.id ? 'Opening…' : formatWhen(n.created_at)}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
