@@ -510,39 +510,63 @@ export default function AnalyticsPage({
       .filter((s) => s.key !== 'inbound_trade_in')
       .map((s) => {
         const key = `main::${s.key}`;
-        const currentAvg = avgDaysFor('main', s.key);
-        const waitingCount = currentCounts.get(key) ?? 0;
-        const exceedingCount = vehicles.filter((v) => {
-          if (v.completed || v.board !== 'main' || v.stage !== s.key) return false;
-          const days = (Date.now() - new Date(v.stage_entered_at).getTime()) / 86400000;
-          return days > redDays;
-        }).length;
 
+        // The actual fix: a live snapshot of vehicles ACTIVELY sitting in
+        // this stage right now, using their real current stage_entered_at
+        // — not the historical avgDaysFor, which only ever sees a stay
+        // once it's over (exited_at gets set the moment a vehicle moves
+        // on). That's exactly why a stage could show "operating
+        // efficiently" while real vehicles were quietly sitting there for
+        // days — the old calculation was structurally blind to anything
+        // still in progress.
+        const activeInStage = vehicles.filter((v) => !v.completed && v.board === 'main' && v.stage === s.key);
+        const currentDaysList = activeInStage.map(
+          (v) => (Date.now() - new Date(v.stage_entered_at).getTime()) / 86400000
+        );
+        const liveAvg =
+          currentDaysList.length > 0 ? currentDaysList.reduce((a, b) => a + b, 0) / currentDaysList.length : null;
+        const waitingCount = activeInStage.length;
+
+        // Two distinct live signals: vehicles already past the red
+        // threshold, and vehicles in the yellow zone heading that way but
+        // not there yet — the second one is new, and it's specifically
+        // what was missing before (a vehicle at 4 days with a 5-day red
+        // threshold is real and worth flagging, even though it hasn't
+        // technically gone red).
+        const exceedingCount = currentDaysList.filter((d) => d > redDays).length;
+        const approachingCount = currentDaysList.filter((d) => d > yellowDays && d <= redDays).length;
+
+        // Historical average — still useful as a longer-term trend signal
+        // (how stays have gone over the selected date range), just no
+        // longer the only thing driving the score.
+        const historicalAvg = avgDaysFor('main', s.key);
         const prevArr = previousStageDurations.get(key);
         const previousAvg = prevArr && prevArr.length > 0 ? prevArr.reduce((a, b) => a + b, 0) / prevArr.length : null;
 
         let health = 100;
         const reasons: string[] = [];
 
-        if (currentAvg !== null) {
-          const excessDays = Math.max(0, currentAvg - redDays);
+        if (liveAvg !== null) {
+          const excessDays = Math.max(0, liveAvg - redDays);
           if (excessDays > 0) {
-            const deduction = Math.min(40, Math.round(excessDays * 6));
-            health -= deduction;
-            reasons.push(`averaging ${excessDays.toFixed(1)} days over target`);
+            health -= Math.min(35, Math.round(excessDays * 6));
+            reasons.push(`vehicles currently there are averaging ${excessDays.toFixed(1)} days over target`);
           }
         }
         if (exceedingCount > 0) {
-          const deduction = Math.min(30, exceedingCount * 8);
-          health -= deduction;
+          health -= Math.min(30, exceedingCount * 8);
           reasons.push(`${exceedingCount} vehicle${exceedingCount === 1 ? '' : 's'} currently over target`);
         }
-        if (previousAvg !== null && currentAvg !== null) {
-          const trendDelta = previousAvg - currentAvg; // positive = improved (faster)
+        if (approachingCount > 0) {
+          health -= Math.min(15, approachingCount * 5);
+          reasons.push(`${approachingCount} vehicle${approachingCount === 1 ? '' : 's'} approaching the target`);
+        }
+        if (previousAvg !== null && historicalAvg !== null) {
+          const trendDelta = previousAvg - historicalAvg; // positive = improved (faster)
           if (trendDelta > 0.1) {
             health = Math.min(100, health + Math.min(10, Math.round(trendDelta * 4)));
           } else if (trendDelta < -0.1) {
-            health -= Math.min(20, Math.round(Math.abs(trendDelta) * 4));
+            health -= Math.min(15, Math.round(Math.abs(trendDelta) * 4));
             reasons.push('slower than the previous period');
           }
         }
@@ -559,8 +583,9 @@ export default function AnalyticsPage({
           label: s.label,
           health,
           indicator,
-          avgDays: currentAvg,
+          avgDays: liveAvg ?? historicalAvg,
           waitingCount,
+          approachingCount,
           exceedingCount,
           recommendation,
         };
@@ -1027,9 +1052,21 @@ ${stats.todaysPriorities.length > 0 ? `
                       <span className="font-display font-bold text-ink tabular flex-shrink-0">{s.health}</span>
                     </div>
                     <p className="text-xs text-steel tabular">
-                      {formatDays(s.avgDays)} average · {s.waitingCount} waiting
-                      {s.exceedingCount > 0 && ` · ${s.exceedingCount} over target`}
+                      {formatDays(s.avgDays)} average, active now · {s.waitingCount} waiting
                     </p>
+                    {(s.approachingCount > 0 || s.exceedingCount > 0) && (
+                      <p className="text-xs tabular mt-0.5">
+                        {s.approachingCount > 0 && (
+                          <span className="text-signal-amber font-medium">
+                            {s.approachingCount} approaching target
+                          </span>
+                        )}
+                        {s.approachingCount > 0 && s.exceedingCount > 0 && <span className="text-steel"> · </span>}
+                        {s.exceedingCount > 0 && (
+                          <span className="text-signal-red font-medium">{s.exceedingCount} over target</span>
+                        )}
+                      </p>
+                    )}
                     <p className="text-xs text-steel mt-1">{s.recommendation}</p>
                   </div>
                 ))}
