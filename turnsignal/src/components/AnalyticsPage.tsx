@@ -5,7 +5,6 @@ import { isAgingRed } from '../lib/aging';
 import { carryingCostSoFar } from '../lib/dates';
 import { computePriorityScores, vehicleShortLabel } from '../lib/priorityScoring';
 import TodaysPrioritiesModal from './TodaysPrioritiesModal';
-import RecommendationsModal from './RecommendationsModal';
 
 // ── Data layer ───────────────────────────────────────────────────────────
 // Fetching and stats computation are kept fully separate from rendering
@@ -137,7 +136,6 @@ export default function AnalyticsPage({
   const [savingRates, setSavingRates] = useState(false);
   const [showRateSettings, setShowRateSettings] = useState(false);
   const [prioritiesModalOpen, setPrioritiesModalOpen] = useState(false);
-  const [recommendationsModalOpen, setRecommendationsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<RangeKey>('month');
@@ -444,16 +442,6 @@ export default function AnalyticsPage({
       .sort((a, b) => b.days - a.days);
     const agingRedCount = agingRedVehicles.length;
 
-    // Full detail behind the Needs Attention panel — same underlying
-    // vehicles as agingRedCount above, just carrying what's needed to
-    // display and navigate to each one instead of only a number.
-    const needsAttention = agingRedVehicles.map(({ vehicle: v, days }) => ({
-      id: v.id,
-      board: v.board,
-      label: vehicleLabel(v),
-      days,
-    }));
-
     const addedInRange = vehicles.filter((v) => inRange(v.created_at)).length;
 
     // ── Priority Scores + Today's Priorities ──────────────────────────
@@ -578,72 +566,10 @@ export default function AnalyticsPage({
     const carryingCostChangeVsPrevious =
       previousPeriodCarryingCost !== null ? periodCarryingCost - previousPeriodCarryingCost : null;
 
-    // ── Turn Rate Score ──────────────────────────────────────────────────
-    // Replaces the earlier multi-category "Dealership Performance Score" —
-    // that blended five separate judgment calls into one number, which
-    // made it hard to fully trust. This is simpler and more honest: how
-    // does the CURRENT period's turn rate compare to this dealership's own
-    // all-time average? 100 means performing at or better than your own
-    // historical norm; it drops as the current period runs slower than
-    // that norm. Nothing here is compared against any outside benchmark —
-    // only against this dealership's own real history.
-    const allTimeTurnTimes: number[] = [];
-    vehicles.forEach((v) => {
-      if (v.stage !== 'price_for_lot' || !v.completed || !v.completed_at) return;
-      const serviceEntered = serviceEnteredByVehicle.get(v.id);
-      if (!serviceEntered) return;
-      allTimeTurnTimes.push((new Date(v.completed_at).getTime() - serviceEntered.getTime()) / 86400000);
-    });
-    const allTimeAvgTurnTime = allTimeTurnTimes.length
-      ? allTimeTurnTimes.reduce((a, b) => a + b, 0) / allTimeTurnTimes.length
-      : null;
-
-    let turnRateScore: number | null = null;
-    let turnRateScoreDetail: string | null = null;
-    if (allTimeAvgTurnTime !== null && avgTurnTime !== null && allTimeAvgTurnTime > 0) {
-      const ratio = avgTurnTime / allTimeAvgTurnTime;
-      turnRateScore = Math.round(Math.max(0, Math.min(100, 100 - (ratio - 1) * 100)));
-      const pctDiff = Math.abs((ratio - 1) * 100);
-      turnRateScoreDetail =
-        ratio <= 1.02
-          ? `${pctDiff.toFixed(0)}% faster than your all-time average of ${allTimeAvgTurnTime.toFixed(1)} days`
-          : `${pctDiff.toFixed(0)}% slower than your all-time average of ${allTimeAvgTurnTime.toFixed(1)} days`;
-    }
-
-    // ── Recommendations Engine ──────────────────────────────────────────
-    // Predefined conditions only — every recommendation names the exact
-    // data that triggered it, right in the sentence itself.
-    const recommendations: { emoji: string; text: string }[] = [];
-
-    stageHealth.forEach((s) => {
-      if (s.indicator === 'red') {
-        recommendations.push({
-          emoji: '🔴',
-          text: `${s.label} average exceeds target (${formatDays(s.avgDays)} vs. a ${redDays}-day target) — consider reallocating attention there.`,
-        });
-      } else if (s.indicator === 'green' && s.avgDays !== null) {
-        recommendations.push({ emoji: '🟢', text: `${s.label} is operating efficiently, averaging ${formatDays(s.avgDays)}.` });
-      }
-    });
-
-    if (agingRedCount > 0 && previousAvgTurnTime !== null && avgTurnTime !== null && previousAvgTurnTime - avgTurnTime > 0.1) {
-      recommendations.push({ emoji: '🟢', text: 'Aging inventory is improving compared to the previous period.' });
-    }
-
+    // Vehicles currently waiting on title — feeds a conditional line in
+    // Executive Summary below (only appears when the count is actually
+    // above zero, rather than a permanent fixture).
     const waitingOnTitleCount = vehicles.filter((v) => !v.completed && v.title_status === 'waiting').length;
-    if (waitingOnTitleCount > 0) {
-      recommendations.push({
-        emoji: '🟡',
-        text: `${waitingOnTitleCount} vehicle${waitingOnTitleCount === 1 ? ' is' : 's are'} waiting on title — follow up on paperwork to avoid further delay.`,
-      });
-    }
-
-    if (carryingCostChangeVsPrevious !== null && carryingCostChangeVsPrevious > 0) {
-      recommendations.push({
-        emoji: '🔴',
-        text: `Carrying cost increased by $${carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} compared to the previous period.`,
-      });
-    }
 
     // Damage rate as a share of total inventory — more useful for
     // tracking a trend over time than the raw count alone.
@@ -665,7 +591,6 @@ export default function AnalyticsPage({
       overdueLoaners,
       mainBoardActive,
       agingRedCount,
-      needsAttention,
       totalCarryingCost,
       periodCarryingCost,
       previousPeriodCarryingCost,
@@ -675,9 +600,7 @@ export default function AnalyticsPage({
       avgTransitTime,
       todaysPriorities,
       stageHealth,
-      turnRateScore,
-      turnRateScoreDetail,
-      recommendations,
+      waitingOnTitleCount,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vehicles, history, boards, yellowDays, redDays, newRatePerDay, usedRatePerDay, range, customStart, customEnd]);
@@ -704,8 +627,11 @@ export default function AnalyticsPage({
       .map((s) => `<div class="summary-row"><span>${s.emoji}</span><span>${s.text}</span></div>`)
       .join('');
 
-    const needsAttentionRows = stats.needsAttention
-      .map((v) => `<tr><td style="padding:5px 10px;border-top:1px solid #e5e7eb;">${v.label}</td><td style="padding:5px 10px;border-top:1px solid #e5e7eb;text-align:right;color:#E5483D;">${v.days.toFixed(1)} days</td></tr>`)
+    const priorityRows = stats.todaysPriorities
+      .map(
+        (p, i) =>
+          `<tr><td style="padding:5px 10px;border-top:1px solid #e5e7eb;">#${i + 1} ${vehicleShortLabel(p.vehicle)}</td><td style="padding:5px 10px;border-top:1px solid #e5e7eb;text-align:right;">${p.score}</td></tr>`
+      )
       .join('');
 
     const html = `<!DOCTYPE html>
@@ -743,11 +669,11 @@ export default function AnalyticsPage({
 <h2 style="margin-top:0;">Executive Summary</h2>
 <div class="summary-box">${summaryRows}</div>
 
-${stats.needsAttention.length > 0 ? `
-<h2>Needs Attention (${stats.needsAttention.length})</h2>
+${stats.todaysPriorities.length > 0 ? `
+<h2>Today's Priorities (${stats.todaysPriorities.length})</h2>
 <table>
-  <thead><tr><th>Vehicle</th><th style="text-align:right;">Days over threshold</th></tr></thead>
-  <tbody>${needsAttentionRows}</tbody>
+  <thead><tr><th>Vehicle</th><th style="text-align:right;">Priority score</th></tr></thead>
+  <tbody>${priorityRows}</tbody>
 </table>` : ''}
 
 <div class="hero">
@@ -818,50 +744,22 @@ ${stats.needsAttention.length > 0 ? `
   function buildExecutiveSummary(): Insight[] {
     const insights: Insight[] = [];
 
-    // Turn rate + trend vs. the immediately preceding period of equal length.
+    // Turn rate + trend vs. the immediately preceding period of equal
+    // length — kept short on purpose, since the only job of this line is
+    // a fast glance, not a full paragraph.
     if (stats.avgTurnTime === null) {
       insights.push({ emoji: '🟡', text: 'No vehicles completed Price for Lot in this period yet.' });
     } else if (stats.previousAvgTurnTime === null) {
-      insights.push({
-        emoji: '🟡',
-        text: `Turn rate is averaging ${stats.avgTurnTime.toFixed(1)} days. Not enough history yet to show a trend.`,
-      });
+      insights.push({ emoji: '🟡', text: `Turn rate: ${stats.avgTurnTime.toFixed(1)} days. Not enough history yet for a trend.` });
     } else {
       const delta = stats.previousAvgTurnTime - stats.avgTurnTime; // positive = current period is faster
       if (delta > 0.1) {
-        insights.push({
-          emoji: '🟢',
-          text: `Turn rate is improving. Average turn time is ${stats.avgTurnTime.toFixed(1)} days, ${delta.toFixed(1)} days faster than the previous period.`,
-        });
+        insights.push({ emoji: '🟢', text: `Turn rate: ${stats.avgTurnTime.toFixed(1)} days — ${delta.toFixed(1)} days faster than last period.` });
       } else if (delta < -0.1) {
-        insights.push({
-          emoji: '🔴',
-          text: `Turn rate has slowed. Average turn time is ${stats.avgTurnTime.toFixed(1)} days, ${Math.abs(delta).toFixed(1)} days slower than the previous period.`,
-        });
+        insights.push({ emoji: '🔴', text: `Turn rate: ${stats.avgTurnTime.toFixed(1)} days — ${Math.abs(delta).toFixed(1)} days slower than last period.` });
       } else {
-        insights.push({
-          emoji: '🟡',
-          text: `Turn rate is steady at ${stats.avgTurnTime.toFixed(1)} days, about the same as the previous period.`,
-        });
+        insights.push({ emoji: '🟡', text: `Turn rate: ${stats.avgTurnTime.toFixed(1)} days — steady vs. last period.` });
       }
-    }
-
-    // Needs-attention count.
-    if (stats.agingRedCount > 0) {
-      insights.push({
-        emoji: '🔴',
-        text: `${stats.agingRedCount} vehicle${stats.agingRedCount === 1 ? '' : 's'} require${stats.agingRedCount === 1 ? 's' : ''} immediate attention — past the dealership's aging threshold.`,
-      });
-    } else {
-      insights.push({ emoji: '🟢', text: "No vehicles are currently past the dealership's aging threshold." });
-    }
-
-    // Bottleneck stage — only shown when there's real data behind it.
-    if (stats.bottleneck) {
-      insights.push({
-        emoji: '🟡',
-        text: `${bottleneckLabel()} is currently the slowest stage, averaging ${stats.bottleneck.avgDays.toFixed(1)} days.`,
-      });
     }
 
     // Carrying cost — always shown, even at $0, since it's still a real fact.
@@ -869,6 +767,24 @@ ${stats.needsAttention.length > 0 ? `
       emoji: '💰',
       text: `Estimated carrying cost of active inventory is $${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}.`,
     });
+
+    // The two genuinely non-redundant conditions from what used to be a
+    // separate Recommendations section — the rest of that section was
+    // dropped because it was just repeating what Stage Health and Today's
+    // Priorities already say. These only appear when actually true.
+    if (stats.waitingOnTitleCount > 0) {
+      insights.push({
+        emoji: '🟡',
+        text: `${stats.waitingOnTitleCount} vehicle${stats.waitingOnTitleCount === 1 ? ' is' : 's are'} waiting on title — follow up on paperwork to avoid further delay.`,
+      });
+    }
+
+    if (stats.carryingCostChangeVsPrevious !== null && stats.carryingCostChangeVsPrevious > 0) {
+      insights.push({
+        emoji: '🔴',
+        text: `Carrying cost is up $${stats.carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the previous period.`,
+      });
+    }
 
     return insights;
   }
@@ -1022,29 +938,6 @@ ${stats.needsAttention.length > 0 ? `
             </button>
           )}
 
-          {stats.needsAttention.length > 0 && (
-            <div>
-              <h2 className="font-display font-semibold text-ink text-sm mb-2">
-                Needs Attention ({stats.needsAttention.length})
-              </h2>
-              <div className="border border-signal-red/30 rounded-lg divide-y divide-gray-100">
-                {stats.needsAttention.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => onNavigateToVehicle?.(v.id, v.board)}
-                    disabled={!onNavigateToVehicle}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
-                  >
-                    <span className="text-sm text-ink truncate">{v.label}</span>
-                    <span className="text-xs text-signal-red font-medium tabular flex-shrink-0">
-                      {v.days.toFixed(1)}d →
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {stats.stageHealth.length > 0 && (
             <div>
               <h2 className="font-display font-semibold text-ink text-sm mb-2">Stage Health — Main Board</h2>
@@ -1073,25 +966,6 @@ ${stats.needsAttention.length > 0 ? `
             </div>
           )}
 
-          {stats.recommendations.length > 0 && (
-            <button
-              onClick={() => setRecommendationsModalOpen(true)}
-              className="w-full text-left border border-gray-200 rounded-lg p-4 hover:bg-asphalt"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <h2 className="font-display font-semibold text-ink text-sm">
-                    Recommendations ({stats.recommendations.length})
-                  </h2>
-                  <p className="text-xs text-steel mt-1 truncate">
-                    {stats.recommendations[0].emoji} {stats.recommendations[0].text}
-                  </p>
-                </div>
-                <span className="text-steel flex-shrink-0">→</span>
-              </div>
-            </button>
-          )}
-
           <div className="bg-ink rounded-xl p-5 text-white">
             <p className="text-xs text-mist uppercase tracking-wide mb-1">Turn Rate (Service → Price for Lot)</p>
             <p className="font-display text-3xl font-bold">{formatDays(stats.avgTurnTime)}</p>
@@ -1104,18 +978,6 @@ ${stats.needsAttention.length > 0 ? `
               <p className="font-display text-xl font-semibold">{formatDays(stats.avgTransitTime)}</p>
             </div>
           </div>
-
-          {stats.turnRateScore !== null && (
-            <div className="border border-gray-200 rounded-lg p-3 flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-ink text-white flex items-center justify-center flex-shrink-0">
-                <span className="font-display font-bold text-base tabular">{stats.turnRateScore}</span>
-              </div>
-              <div className="min-w-0">
-                <p className="font-display font-semibold text-ink text-sm">Turn Rate Score</p>
-                <p className="text-xs text-steel">{stats.turnRateScoreDetail}</p>
-              </div>
-            </div>
-          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-asphalt rounded-lg p-3">
@@ -1262,13 +1124,6 @@ ${stats.needsAttention.length > 0 ? `
           boards={boards}
           onClose={() => setPrioritiesModalOpen(false)}
           onNavigateToVehicle={onNavigateToVehicle}
-        />
-      )}
-
-      {recommendationsModalOpen && (
-        <RecommendationsModal
-          recommendations={stats.recommendations}
-          onClose={() => setRecommendationsModalOpen(false)}
         />
       )}
     </div>
