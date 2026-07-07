@@ -154,7 +154,12 @@ export default function Dashboard() {
               🏢 Switch store
             </button>
           )}
-          <NotificationBell />
+          <NotificationBell
+            onNavigateToVehicle={(vehicleId, board) => {
+              setAnalyticsOpen(false);
+              setNavigateTarget({ vehicleId, board });
+            }}
+          />
           <div className="relative">
             <button
               onClick={() => setMenuOpen((o) => !o)}
