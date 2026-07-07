@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import { notifyRoleOnStageEntry } from './stageNotifications';
 
 export type NewVehicleFields = {
   dealershipId: string;
@@ -59,18 +58,6 @@ export async function createVehicle(fields: NewVehicleFields) {
       board: fields.board,
       stage: fields.stage,
       entered_at: now,
-    });
-
-    const vehicleLabel = `${fields.stock_number ? fields.stock_number + '-' : ''}${fields.year ?? ''} ${fields.make ?? ''} ${fields.model ?? ''}${fields.trim ? ' ' + fields.trim : ''}`.trim();
-
-    await notifyRoleOnStageEntry({
-      dealershipId: fields.dealershipId,
-      stage: fields.stage,
-      vehicleId: created.id,
-      vehicleLabel,
-      actorId: fields.createdById,
-      actorName: fields.createdByName,
-      action: 'added',
     });
   }
 

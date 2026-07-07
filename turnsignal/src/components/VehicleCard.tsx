@@ -62,6 +62,7 @@ export default function VehicleCard({
   highlighted,
   onAnyModalOpenChange,
   photoCount = 0,
+  compactMode,
   onMoved,
 }: {
   vehicle: Vehicle;
@@ -75,6 +76,7 @@ export default function VehicleCard({
   highlighted?: boolean;
   onAnyModalOpenChange?: (open: boolean) => void;
   photoCount?: number;
+  compactMode?: boolean;
   onMoved: () => void;
 }) {
   const { session, userName } = useAuth();
@@ -198,6 +200,68 @@ export default function VehicleCard({
           )}
           <span className="text-gray-400 flex-shrink-0">›</span>
         </button>
+      </div>
+    );
+  }
+
+  // Compact/collapsed board view — a personal, board-wide toggle (not tied
+  // to this specific vehicle) that shows just enough to identify a car at
+  // a glance: stock number and year/make/model. Only applies to active
+  // vehicles — completed ones already have their own collapsed row above.
+  // Drag-and-drop still works here via the same useSortable handles as
+  // the full card; tapping the row opens full detail directly, since
+  // there's no extra info to "expand into" in place.
+  if (compactMode && !vehicle.completed && !highlighted) {
+    return (
+      <div
+        id={`vehicle-card-${vehicle.id}`}
+        ref={setNodeRef}
+        style={{
+          transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+          transition,
+          opacity: isDragging ? 0.3 : 1,
+        }}
+        className="relative bg-white rounded-lg shadow-sm border border-gray-200 mb-1.5 flex items-center gap-2 pl-3 pr-1 py-2"
+      >
+        <button onClick={() => setEditOpen(true)} className="flex-1 text-left min-w-0 py-1">
+          <span className="text-sm text-ink truncate block">
+            {vehicle.stock_number && <span className="font-semibold">{vehicle.stock_number}-</span>}
+            {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
+          </span>
+        </button>
+        <div
+          {...listeners}
+          {...attributes}
+          style={{ touchAction: 'none' }}
+          className="w-9 h-9 flex-shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-400 active:scale-90 transition"
+          aria-label="Drag to move"
+        >
+          <svg width="14" height="18" viewBox="0 0 12 16" fill="currentColor">
+            <circle cx="2" cy="2" r="1.5" />
+            <circle cx="2" cy="8" r="1.5" />
+            <circle cx="2" cy="14" r="1.5" />
+            <circle cx="9" cy="2" r="1.5" />
+            <circle cx="9" cy="8" r="1.5" />
+            <circle cx="9" cy="14" r="1.5" />
+          </svg>
+        </div>
+
+        {editOpen &&
+          createPortal(
+            <AddVehicleModal
+              dealershipId={vehicle.dealership_id}
+              boards={boards}
+              board={vehicle.board}
+              stage={vehicle.stage}
+              vehicle={vehicle}
+              onClose={() => setEditOpen(false)}
+              onCreated={() => {
+                setEditOpen(false);
+                onMoved();
+              }}
+            />,
+            document.body
+          )}
       </div>
     );
   }
@@ -429,6 +493,7 @@ export default function VehicleCard({
             <NotesModal
               vehicleId={vehicle.id}
               vehicleLabel={vehicleLabel}
+              dealershipId={vehicle.dealership_id}
               onClose={() => setNotesOpen(false)}
               onChanged={loadNotes}
             />

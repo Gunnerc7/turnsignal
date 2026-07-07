@@ -49,6 +49,8 @@ export type VehicleNote = {
   created_at: string;
   author_email: string | null;
   author_name: string | null;
+  tagged_user_ids: string[] | null;
+  tagged_user_names: string[] | null;
 };
 
 export type StageHistoryRow = {

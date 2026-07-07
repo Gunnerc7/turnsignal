@@ -45,6 +45,10 @@ export default function DealerBoard({
 }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [photoCounts, setPhotoCounts] = useState<Map<string, number>>(new Map());
+  // Personal, board-wide toggle — not a dealership setting, so it's kept
+  // in sessionStorage per-browser like other UI-only preferences (active
+  // board tab, draft form state) rather than the database.
+  const [compactMode, setCompactMode] = useState(() => sessionStorage.getItem('ts-compact-mode') === '1');
   const [boards, setBoards] = useState<BoardConfig[]>([]);
   // Restore the last-active board from sessionStorage — this is what
   // survives iOS Safari tab discards and comes back to the right column
@@ -397,6 +401,20 @@ export default function DealerBoard({
         )}
         <div className="relative ml-auto flex items-center gap-2">
           <button
+            onClick={() => {
+              const next = !compactMode;
+              setCompactMode(next);
+              sessionStorage.setItem('ts-compact-mode', next ? '1' : '0');
+            }}
+            aria-label={compactMode ? 'Switch to full card view' : 'Switch to compact view'}
+            title={compactMode ? 'Full view' : 'Compact view'}
+            className={`text-sm whitespace-nowrap px-2 py-1 rounded-md ${
+              compactMode ? 'bg-signal-blue text-white' : 'text-steel'
+            }`}
+          >
+            ☰
+          </button>
+          <button
             onClick={() => setSearchOpen((o) => !o)}
             aria-label="Search vehicles"
             className="text-steel text-sm whitespace-nowrap px-2 py-1"
@@ -477,6 +495,7 @@ export default function DealerBoard({
                   highlightedVehicleId={highlightedVehicleId}
                   onAnyCardModalOpenChange={handleAnyCardModalOpenChange}
                   photoCounts={photoCounts}
+                  compactMode={compactMode}
                   vehicles={vehicles
                     .filter((v) => v.board === activeBoard.key && v.stage === stage.key)
                     .sort((a, b) => {

@@ -19,6 +19,7 @@ export default function KanbanColumn({
   highlightedVehicleId,
   onAnyCardModalOpenChange,
   photoCounts,
+  compactMode,
   onAddClick,
   onMoved,
 }: {
@@ -35,6 +36,7 @@ export default function KanbanColumn({
   highlightedVehicleId?: string | null;
   onAnyCardModalOpenChange?: (open: boolean) => void;
   photoCounts: Map<string, number>;
+  compactMode?: boolean;
   onAddClick: () => void;
   onMoved: () => void;
 }) {
@@ -97,6 +99,7 @@ export default function KanbanColumn({
                     highlighted={v.id === highlightedVehicleId}
                     onAnyModalOpenChange={onAnyCardModalOpenChange}
                     photoCount={photoCounts.get(v.id) ?? 0}
+                    compactMode={compactMode}
                     onMoved={onMoved}
                   />
                 ))}
@@ -128,6 +131,7 @@ export default function KanbanColumn({
                         highlighted={v.id === highlightedVehicleId}
                         onAnyModalOpenChange={onAnyCardModalOpenChange}
                         photoCount={photoCounts.get(v.id) ?? 0}
+                        compactMode={compactMode}
                         onMoved={onMoved}
                       />
                     ))}
