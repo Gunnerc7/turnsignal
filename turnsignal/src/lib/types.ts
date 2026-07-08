@@ -30,6 +30,7 @@ export type Vehicle = {
   assigned_to_id: string | null;
   assigned_to_name: string | null;
   title_status: 'has_title' | 'poa' | 'waiting' | null;
+  title_status_updated_at: string | null;
 };
 
 export type Notification = {

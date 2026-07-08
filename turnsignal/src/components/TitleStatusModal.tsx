@@ -32,7 +32,7 @@ export default function TitleStatusModal({
     setError(null);
     const { error: updateError } = await supabase
       .from('vehicles')
-      .update({ title_status: value })
+      .update({ title_status: value, title_status_updated_at: new Date().toISOString() })
       .eq('id', vehicleId);
     setSaving(false);
 

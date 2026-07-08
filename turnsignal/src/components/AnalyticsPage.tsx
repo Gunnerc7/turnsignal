@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { BoardConfig, fetchBoards } from '../lib/boards';
-import { isAgingRed } from '../lib/aging';
+import { isAgingRed, getThresholds } from '../lib/aging';
 import { carryingCostSoFar } from '../lib/dates';
 import { computePriorityScores, vehicleShortLabel } from '../lib/priorityScoring';
 import TodaysPrioritiesModal from './TodaysPrioritiesModal';
@@ -94,6 +94,7 @@ type VehicleRow = {
   has_damage: boolean;
   is_new: boolean;
   title_status: 'has_title' | 'poa' | 'waiting' | null;
+  title_status_updated_at: string | null;
   loaner_return_date: string | null;
   created_at: string;
   stock_number: string | null;
@@ -160,7 +161,7 @@ export default function AnalyticsPage({
       const { data: vehiclesData } = await supabase
         .from('vehicles')
         .select(
-          'id, board, stage, stage_entered_at, recon_started_at, completed, completed_at, has_damage, is_new, title_status, loaner_return_date, created_at, stock_number, year, make, model, completed_by_name'
+          'id, board, stage, stage_entered_at, recon_started_at, completed, completed_at, has_damage, is_new, title_status, title_status_updated_at, loaner_return_date, created_at, stock_number, year, make, model, completed_by_name'
         )
         .eq('dealership_id', dealershipId);
 
@@ -591,6 +592,57 @@ export default function AnalyticsPage({
         };
       });
 
+    // ── Board Watch ──────────────────────────────────────────────────────
+    // Deliberately narrow — Stage Health already owns Main Board, so this
+    // only watches the two things nothing else on the page sees: vehicles
+    // sitting quietly on a sidebar board (Loaners, Body Shop, Waiting on
+    // Title, Auction/Wholesale) longer than the dealership's own aging
+    // threshold with nothing moving them along, and vehicles where Title
+    // Status has been stuck at "Waiting" long enough that it's worth a
+    // human double-checking whether that's still actually true — exactly
+    // the gap that let a title sit marked "waiting" after it had already
+    // arrived. Every item here is a plain rule against real timestamps,
+    // nothing inferred or guessed at.
+    const boardWatchItems: { emoji: string; text: string; vehicleId: string; board: string }[] = [];
+
+    boards
+      .filter((b) => b.key !== 'main')
+      .forEach((b) => {
+        vehicles
+          .filter((v) => !v.completed && v.board === b.key)
+          .forEach((v) => {
+            const days = (Date.now() - new Date(v.stage_entered_at).getTime()) / 86400000;
+            if (days >= redDays) {
+              boardWatchItems.push({
+                emoji: '🔸',
+                text: `${vehicleLabel(v)} has been in ${b.label} for ${days.toFixed(0)} days with no update.`,
+                vehicleId: v.id,
+                board: v.board,
+              });
+            }
+          });
+      });
+
+    // Title status stuck on "Waiting" — uses the real timestamp above,
+    // not a guess. Same redDays threshold as everywhere else, so "stuck
+    // too long" means the same thing here as it does anywhere else on
+    // the page.
+    vehicles
+      .filter((v) => !v.completed && v.title_status === 'waiting' && v.title_status_updated_at)
+      .forEach((v) => {
+        const days = (Date.now() - new Date(v.title_status_updated_at!).getTime()) / 86400000;
+        if (days >= redDays) {
+          boardWatchItems.push({
+            emoji: '🔸',
+            text: `${vehicleLabel(v)} has shown "Waiting on Title" for ${days.toFixed(0)} days — worth confirming that's still accurate.`,
+            vehicleId: v.id,
+            board: v.board,
+          });
+        }
+      });
+
+    boardWatchItems.sort((a, b) => a.text.localeCompare(b.text));
+
     // ── Lost Money Dashboard extras ─────────────────────────────────────
     // Carrying cost avoided (or added) vs. the immediately preceding
     // period, plus a plain narrative sentence. No gross profit estimate —
@@ -613,6 +665,44 @@ export default function AnalyticsPage({
     }
     const carryingCostChangeVsPrevious =
       previousPeriodCarryingCost !== null ? periodCarryingCost - previousPeriodCarryingCost : null;
+
+    // ── Opportunity Meter ────────────────────────────────────────────────
+    // Not a savings promise — a plain, rule-based estimate of how much of
+    // today's carrying cost is specifically the EXCESS beyond each
+    // vehicle's own stage target, using only this dealership's own
+    // configured rates and thresholds. A vehicle exactly at or under
+    // target contributes $0 to this number, even though it's still
+    // accruing real carrying cost overall.
+    let opportunityAmount = 0;
+    vehicles
+      .filter((v) => !v.completed)
+      .forEach((v) => {
+        const thresholds = getThresholds(v.board, v.stage, yellowDays, redDays);
+        if (!thresholds) return; // Inbound/Loaners aren't held to a target the same way
+        const anchor = v.recon_started_at ?? v.stage_entered_at;
+        const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
+        const excessDays = Math.max(0, days - thresholds.red);
+        if (excessDays <= 0) return;
+        const rate = v.is_new ? newRatePerDay : usedRatePerDay;
+        opportunityAmount += excessDays * rate;
+      });
+    const targetCarryingCost = Math.max(0, totalCarryingCost - opportunityAmount);
+
+    // ── Cost by stage ────────────────────────────────────────────────────
+    // Which Main Board stage is actually generating the most carrying
+    // cost right now — a different question from "which stage is
+    // slowest," since a fast-moving stage with many vehicles can still
+    // generate more total cost than a slow stage with just one or two.
+    const costByStage = (mainBoard?.stages ?? [])
+      .filter((s) => s.key !== 'inbound_trade_in')
+      .map((s) => {
+        const cost = vehicles
+          .filter((v) => !v.completed && v.board === 'main' && v.stage === s.key)
+          .reduce((sum, v) => sum + carryingCostSoFar(v, newRatePerDay, usedRatePerDay), 0);
+        return { label: s.label, cost };
+      })
+      .filter((s) => s.cost > 0)
+      .sort((a, b) => b.cost - a.cost);
 
     // Vehicles currently waiting on title — feeds a conditional line in
     // Executive Summary below (only appears when the count is actually
@@ -648,6 +738,10 @@ export default function AnalyticsPage({
       avgTransitTime,
       todaysPriorities,
       stageHealth,
+      boardWatchItems,
+      opportunityAmount,
+      targetCarryingCost,
+      costByStage,
       waitingOnTitleCount,
       weeklyTrend,
     };
@@ -838,6 +932,10 @@ ${stats.todaysPriorities.length > 0 ? `
     return insights;
   }
 
+  // Separate from the mainBoard used inside the stats calculation above —
+  // that one is scoped to the useMemo and isn't reachable from render.
+  const mainBoardForDisplay = boards.find((b) => b.key === 'main');
+
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
       <div className="flex items-center justify-between px-4 py-3.5 bg-ink text-white flex-shrink-0 flex-wrap gap-y-2">
@@ -975,8 +1073,66 @@ ${stats.todaysPriorities.length > 0 ? `
             </div>
           )}
 
-          {/* The glance layer — four colorful, tappable tiles instead of
-              a column of text to read top to bottom. */}
+          {/* The single biggest, most prominent thing on the page — not
+              an equal peer to the tiles below it. This is deliberately
+              not the same size as everything else: it's the one thing
+              worth seeing before anything else. */}
+          {stats.todaysPriorities.length > 0 ? (
+            <button
+              onClick={() => setPrioritiesModalOpen(true)}
+              className="w-full text-left bg-ink rounded-2xl p-5 active:scale-[0.99] transition"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-mist uppercase tracking-wide">🚩 Today's Priorities</p>
+                <span className="text-mist text-xs">Tap to view all →</span>
+              </div>
+              <p className="font-display text-4xl font-bold text-white leading-none mb-2">
+                {stats.todaysPriorities.length}
+              </p>
+              <p className="text-sm text-mist truncate">
+                Top: {vehicleShortLabel(stats.todaysPriorities[0].vehicle)} — score{' '}
+                {stats.todaysPriorities[0].score}
+              </p>
+            </button>
+          ) : (
+            <div className="w-full bg-signal-green/10 border border-signal-green/30 rounded-2xl p-5">
+              <p className="text-sm text-ink font-medium">🟢 Nothing needs immediate attention right now.</p>
+            </div>
+          )}
+
+          {/* Pipeline strip — the shape of where things back up, at a
+              glance, without repeating any of Stage Health's numbers. */}
+          {mainBoardForDisplay && (
+            <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">
+              {mainBoardForDisplay.stages.map((s, i) => {
+                const health = stats.stageHealth.find((h) => h.key === s.key);
+                const dotColor =
+                  s.key === 'inbound_trade_in'
+                    ? 'bg-gray-300'
+                    : health?.indicator === 'green'
+                    ? 'bg-signal-green'
+                    : health?.indicator === 'yellow'
+                    ? 'bg-signal-amber'
+                    : health?.indicator === 'red'
+                    ? 'bg-signal-red'
+                    : 'bg-gray-300';
+                return (
+                  <div key={s.key} className="flex items-center flex-1 last:flex-none">
+                    <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                      <span className={`w-3 h-3 rounded-full ${dotColor}`} />
+                      <span className="text-[9px] text-steel text-center leading-tight max-w-[52px]">{s.label}</span>
+                    </div>
+                    {i < mainBoardForDisplay.stages.length - 1 && <div className="h-px bg-gray-200 flex-1 mx-1" />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Secondary row — real, but deliberately smaller than the
+              priorities card above. Carrying Cost now carries the
+              Opportunity figure as context, rather than a separate tile
+              competing for the same attention. */}
           <div className="grid grid-cols-2 gap-3">
             <OverviewTile
               icon="⏱️"
@@ -1001,36 +1157,37 @@ ${stats.todaysPriorities.length > 0 ? `
               accent="amber"
               value={`$${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
               label="Carrying Cost"
-              trend={
-                stats.carryingCostChangeVsPrevious !== null
-                  ? {
-                      direction: stats.carryingCostChangeVsPrevious > 0 ? 'up' : 'down',
-                      good: stats.carryingCostChangeVsPrevious <= 0,
-                      label: `$${Math.abs(stats.carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. last period`,
-                    }
+              sublabel={
+                stats.opportunityAmount > 1
+                  ? `~$${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} avoidable if on target`
                   : undefined
               }
             />
-            <OverviewTile
-              icon="🚩"
-              accent="red"
-              value={String(stats.todaysPriorities.length)}
-              label="Today's Priorities"
-              sublabel={stats.todaysPriorities.length > 0 ? 'Tap to view →' : undefined}
-              onClick={stats.todaysPriorities.length > 0 ? () => setPrioritiesModalOpen(true) : undefined}
-            />
-            <OverviewTile
-              icon="🩺"
-              accent="green"
-              value={
-                stats.stageHealth.length > 0
-                  ? String(Math.round(stats.stageHealth.reduce((a, b) => a + b.health, 0) / stats.stageHealth.length))
-                  : '—'
-              }
-              label="Stage Health Avg"
-              sublabel={stats.stageHealth.length > 0 ? 'See breakdown below ↓' : undefined}
-            />
           </div>
+
+          {/* Board Watch — deliberately narrow. Stage Health already owns
+              Main Board, so this only ever shows what nothing else on the
+              page can see: sidebar boards, and title status stuck long
+              enough to be worth double-checking. Empty most of the time
+              on purpose. */}
+          {stats.boardWatchItems.length > 0 && (
+            <div>
+              <h2 className="font-display font-semibold text-ink text-sm mb-2">Board Watch</h2>
+              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                {stats.boardWatchItems.map((item, i) => (
+                  <button
+                    key={i}
+                    onClick={() => onNavigateToVehicle?.(item.vehicleId, item.board)}
+                    disabled={!onNavigateToVehicle}
+                    className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
+                  >
+                    <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
+                    <p className="text-sm text-ink leading-snug">{item.text}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <CompletionsTrendChart data={stats.weeklyTrend} />
 
@@ -1068,6 +1225,22 @@ ${stats.todaysPriorities.length > 0 ? `
                       </p>
                     )}
                     <p className="text-xs text-steel mt-1">{s.recommendation}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {stats.costByStage.length > 0 && (
+            <div>
+              <h2 className="font-display font-semibold text-ink text-sm mb-2">Cost by Stage</h2>
+              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                {stats.costByStage.map((s) => (
+                  <div key={s.label} className="flex items-center justify-between px-3 py-2.5">
+                    <span className="text-sm text-ink">{s.label}</span>
+                    <span className="text-sm font-semibold text-ink tabular">
+                      ${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1240,6 +1413,8 @@ ${stats.todaysPriorities.length > 0 ? `
         <TodaysPrioritiesModal
           priorities={stats.todaysPriorities}
           boards={boards}
+          newRatePerDay={newRatePerDay}
+          usedRatePerDay={usedRatePerDay}
           onClose={() => setPrioritiesModalOpen(false)}
           onNavigateToVehicle={onNavigateToVehicle}
         />
