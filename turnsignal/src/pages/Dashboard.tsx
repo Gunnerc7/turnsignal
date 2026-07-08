@@ -96,7 +96,27 @@ export default function Dashboard() {
   }
 
   if (error || !profile) {
-    return <p className="text-signal-red text-sm p-4">{error}</p>;
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-sm text-center">
+          <p className="text-signal-red text-sm mb-5">{error}</p>
+          <button
+            onClick={() => loadProfile()}
+            className="w-full bg-signal-blue text-white font-display font-semibold rounded-lg py-3 mb-3"
+          >
+            Try again
+          </button>
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+            }}
+            className="w-full text-steel text-sm py-2"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const isOwner = profile.role === 'owner';
