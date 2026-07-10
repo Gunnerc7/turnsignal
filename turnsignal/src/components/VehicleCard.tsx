@@ -241,7 +241,10 @@ export default function VehicleCard({
           transition,
           opacity: isDragging ? 0.3 : 1,
         }}
-        className="relative bg-white rounded-lg shadow-sm border border-gray-200 mb-1.5 flex items-center gap-2 pl-3 pr-1 py-2"
+        className={`relative bg-white rounded-lg shadow-sm border border-gray-200 mb-1.5 flex items-center gap-2 pl-5 pr-1 py-2
+          before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-lg ${
+            vehicle.board === 'loaners' ? loanerStripe(vehicle.loaner_status) : ageStripe(days, thresholds)
+          }`}
       >
         <button onClick={() => setEditOpen(true)} className="flex-1 text-left min-w-0 py-1">
           <span className="text-sm text-ink truncate block">
