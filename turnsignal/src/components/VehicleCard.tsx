@@ -43,6 +43,13 @@ function ageStripe(days: number, thresholds: { yellow: number; red: number } | n
   return 'before:bg-signal-green';
 }
 
+// Loaners board cards skip aging colors entirely (that stripe would
+// otherwise sit unused, always gray) — repurposed here instead, so a
+// quick scan down the column shows at a glance which loaners are free.
+function loanerStripe(status: 'here' | 'out' | null): string {
+  return status === 'out' ? 'before:bg-signal-blue' : 'before:bg-signal-green';
+}
+
 function ageBadgeStyles(days: number, thresholds: { yellow: number; red: number } | null) {
   if (!thresholds) return 'bg-gray-200 text-steel';
   if (days >= thresholds.red) return 'bg-signal-red text-white shadow-glowRed';
@@ -82,6 +89,7 @@ export default function VehicleCard({
   const { session, userName } = useAuth();
   const [moving, setMoving] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [togglingLoaner, setTogglingLoaner] = useState(false);
   const [notes, setNotes] = useState<VehicleNote[]>([]);
   const [notesOpen, setNotesOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -148,9 +156,21 @@ export default function VehicleCard({
         completed_by_email: nowCompleting ? session?.user.email ?? null : null,
         completed_by_name: nowCompleting ? userName : null,
         completed_at: nowCompleting ? now : null,
+        // A completed loaner isn't "here" or "out" anymore — clears the
+        // same way it does when a vehicle leaves the Loaners board
+        // entirely, so the badge never lingers on a finished card.
+        ...(nowCompleting && vehicle.board === 'loaners' ? { loaner_status: null } : {}),
       })
       .eq('id', vehicle.id);
     setToggling(false);
+    onMoved();
+  }
+
+  async function handleToggleLoanerStatus() {
+    setTogglingLoaner(true);
+    const next = vehicle.loaner_status === 'out' ? 'here' : 'out';
+    await supabase.from('vehicles').update({ loaner_status: next }).eq('id', vehicle.id);
+    setTogglingLoaner(false);
     onMoved();
   }
 
@@ -276,7 +296,9 @@ export default function VehicleCard({
         opacity: isDragging ? 0.3 : 1,
       }}
       className={`relative bg-white rounded-xl shadow-sm border border-gray-200 p-3.5 mb-3 pl-5 transition-all duration-300
-        before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-xl ${ageStripe(days, thresholds)}
+        before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-xl ${
+          vehicle.board === 'loaners' ? loanerStripe(vehicle.loaner_status) : ageStripe(days, thresholds)
+        }
         ${highlighted ? 'ring-2 ring-signal-blue shadow-lift' : ''}`}
     >
       {!vehicle.completed && (
@@ -346,6 +368,21 @@ export default function VehicleCard({
           </button>
         </div>
       </div>
+
+      {vehicle.board === 'loaners' && !vehicle.completed && (
+        <button
+          onClick={handleToggleLoanerStatus}
+          disabled={togglingLoaner}
+          className={`mt-2 ml-7 w-[calc(100%-1.75rem)] text-sm font-semibold rounded-lg py-2 flex items-center justify-center gap-1.5 active:scale-[0.98] transition disabled:opacity-60 ${
+            vehicle.loaner_status === 'out'
+              ? 'bg-signal-blue/10 text-signal-blue'
+              : 'bg-signal-green/10 text-signal-green'
+          }`}
+        >
+          <span className={`w-2 h-2 rounded-full ${vehicle.loaner_status === 'out' ? 'bg-signal-blue' : 'bg-signal-green'}`} />
+          {vehicle.loaner_status === 'out' ? 'Out with Customer' : 'Here / Available'}
+        </button>
+      )}
 
       {vehicle.has_damage && (
         <p className="mt-1.5 pl-7 inline-flex items-center gap-1 text-xs font-bold text-signal-red">

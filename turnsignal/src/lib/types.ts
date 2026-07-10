@@ -31,6 +31,7 @@ export type Vehicle = {
   assigned_to_name: string | null;
   title_status: 'has_title' | 'poa' | 'waiting' | null;
   title_status_updated_at: string | null;
+  loaner_status: 'here' | 'out' | null;
 };
 
 export type Notification = {

@@ -10,7 +10,7 @@ export async function moveVehicleToStage(vehicleId: string, newBoard: string, ne
 
   const { data: vehicle } = await supabase
     .from('vehicles')
-    .select('recon_started_at')
+    .select('board, recon_started_at')
     .eq('id', vehicleId)
     .single();
 
@@ -29,6 +29,18 @@ export async function moveVehicleToStage(vehicleId: string, newBoard: string, ne
   // and never resets again after that — every later move just adds to it.
   if (!vehicle?.recon_started_at && newStage !== 'inbound_trade_in') {
     updates.recon_started_at = now;
+  }
+
+  // Loaner status only ever means something on the Loaners board — freshly
+  // arriving there always starts "here" (it hasn't gone out with anyone
+  // yet), and leaving clears it so a stale "out with customer" badge can
+  // never linger on a card that isn't a loaner anymore.
+  const wasOnLoaners = vehicle?.board === 'loaners';
+  const isEnteringLoaners = newBoard === 'loaners';
+  if (isEnteringLoaners && !wasOnLoaners) {
+    updates.loaner_status = 'here';
+  } else if (wasOnLoaners && !isEnteringLoaners) {
+    updates.loaner_status = null;
   }
 
   return supabase.from('vehicles').update(updates).eq('id', vehicleId);

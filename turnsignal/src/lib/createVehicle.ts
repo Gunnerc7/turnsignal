@@ -48,6 +48,7 @@ export async function createVehicle(fields: NewVehicleFields) {
       assigned_to_name: fields.assigned_to_name,
       created_by_email: fields.createdByEmail,
       created_by_name: fields.createdByName,
+      loaner_status: fields.board === 'loaners' ? 'here' : null,
     })
     .select()
     .single();
