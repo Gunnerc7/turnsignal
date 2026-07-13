@@ -61,6 +61,10 @@ export default function AddVehicleModal({
   const isNewManuallySet = useRef(isEditing); // editing an existing vehicle never auto-overrides its flag
   const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : (savedDraft?.mileage ?? ''));
   const [assignedToId, setAssignedToId] = useState(vehicle?.assigned_to_id ?? savedDraft?.assignedToId ?? '');
+  const [loanerReturnDate, setLoanerReturnDate] = useState(vehicle?.loaner_return_date?.slice(0, 10) ?? '');
+  // Which board this vehicle is actually on (or heading to) — used to
+  // decide whether the loaner-specific due date field is relevant at all.
+  const currentBoard = vehicle?.board ?? (needsBucketPicker ? destination.split('::')[0] : board);
   const [members, setMembers] = useState<{ id: string; label: string }[]>([]);
   const [decoding, setDecoding] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -175,6 +179,13 @@ export default function AddVehicleModal({
     const assignedMember = members.find((m) => m.id === assignedToId);
     const isNewAssignment = assignedToId && assignedToId !== previousAssignedToId;
 
+    // Only touch the notified/set-by fields when the date itself actually
+    // changed — an unrelated save (e.g. just fixing the color) shouldn't
+    // reset a notification that's already correctly pending or already
+    // fired.
+    const previousLoanerDate = vehicle?.loaner_return_date?.slice(0, 10) ?? '';
+    const loanerDateChanged = previousLoanerDate !== loanerReturnDate;
+
     const sharedFields = {
       vin: vin.trim() || null,
       year: year ? parseInt(year, 10) : null,
@@ -188,6 +199,13 @@ export default function AddVehicleModal({
       is_new: isNew,
       assigned_to_id: assignedToId || null,
       assigned_to_name: assignedToId ? assignedMember?.label ?? null : null,
+      loaner_return_date: loanerReturnDate || null,
+      ...(loanerDateChanged
+        ? {
+            loaner_return_date_set_by: loanerReturnDate ? session?.user.id ?? null : null,
+            loaner_return_date_notified: false,
+          }
+        : {}),
     };
 
     const vehicleLabelForNotification = `${stockNumber.trim() ? stockNumber.trim() + '-' : ''}${year} ${make} ${model}`.trim();
@@ -438,6 +456,21 @@ export default function AddVehicleModal({
               ))}
             </select>
           </div>
+
+          {currentBoard === 'loaners' && (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Due back (optional)</label>
+              <input
+                type="date"
+                value={loanerReturnDate}
+                onChange={(e) => setLoanerReturnDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base bg-white"
+              />
+              <p className="text-xs text-steel mt-1">
+                You'll get a notification once this date is reached — leave blank if there isn't one.
+              </p>
+            </div>
+          )}
 
           {error && <p className="text-signal-red text-sm">{error}</p>}
 

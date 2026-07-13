@@ -36,18 +36,18 @@ function shortName(email: string | null): string {
   return email.split('@')[0];
 }
 
-function ageStripe(days: number, thresholds: { yellow: number; red: number } | null) {
-  if (!thresholds) return 'before:bg-gray-300';
-  if (days >= thresholds.red) return 'before:bg-signal-red';
-  if (days >= thresholds.yellow) return 'before:bg-signal-amber';
-  return 'before:bg-signal-green';
+function ageStripeColor(days: number, thresholds: { yellow: number; red: number } | null): string {
+  if (!thresholds) return '#D1D5DB';
+  if (days >= thresholds.red) return '#E5483D';
+  if (days >= thresholds.yellow) return '#F5A623';
+  return '#1FA463';
 }
 
 // Loaners board cards skip aging colors entirely (that stripe would
 // otherwise sit unused, always gray) — repurposed here instead, so a
 // quick scan down the column shows at a glance which loaners are free.
-function loanerStripe(status: 'here' | 'out' | null): string {
-  return status === 'out' ? 'before:bg-signal-blue' : 'before:bg-signal-green';
+function loanerStripeColor(status: 'here' | 'out' | null): string {
+  return status === 'out' ? '#2D5BFF' : '#1FA463';
 }
 
 function ageBadgeStyles(days: number, thresholds: { yellow: number; red: number } | null) {
@@ -90,6 +90,7 @@ export default function VehicleCard({
   const [moving, setMoving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [togglingLoaner, setTogglingLoaner] = useState(false);
+  const [togglingCarryingCostTracking, setTogglingCarryingCostTracking] = useState(false);
   const [notes, setNotes] = useState<VehicleNote[]>([]);
   const [notesOpen, setNotesOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -174,6 +175,16 @@ export default function VehicleCard({
     onMoved();
   }
 
+  async function handleToggleCarryingCostTracking() {
+    setTogglingCarryingCostTracking(true);
+    await supabase
+      .from('vehicles')
+      .update({ loaner_track_carrying_cost: !vehicle.loaner_track_carrying_cost })
+      .eq('id', vehicle.id);
+    setTogglingCarryingCostTracking(false);
+    onMoved();
+  }
+
   const latestNote = notes[0];
 
   // Completed vehicles collapse down to a single slim row, Planner-style —
@@ -241,11 +252,15 @@ export default function VehicleCard({
           transition,
           opacity: isDragging ? 0.3 : 1,
         }}
-        className={`relative bg-white rounded-lg shadow-sm border border-gray-200 mb-1.5 flex items-center gap-2 pl-5 pr-1 py-2
-          before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-lg ${
-            vehicle.board === 'loaners' ? loanerStripe(vehicle.loaner_status) : ageStripe(days, thresholds)
-          }`}
+        className="relative bg-white rounded-lg shadow-sm border border-gray-200 mb-1.5 flex items-center gap-2 pl-5 pr-1 py-2"
       >
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-lg"
+          style={{
+            backgroundColor:
+              vehicle.board === 'loaners' ? loanerStripeColor(vehicle.loaner_status) : ageStripeColor(days, thresholds),
+          }}
+        />
         <button onClick={() => setEditOpen(true)} className="flex-1 text-left min-w-0 py-1">
           <span className="text-sm text-ink truncate block">
             {vehicle.stock_number && <span className="font-semibold">{vehicle.stock_number}-</span>}
@@ -299,11 +314,15 @@ export default function VehicleCard({
         opacity: isDragging ? 0.3 : 1,
       }}
       className={`relative bg-white rounded-xl shadow-sm border border-gray-200 p-3.5 mb-3 pl-5 transition-all duration-300
-        before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:rounded-l-xl ${
-          vehicle.board === 'loaners' ? loanerStripe(vehicle.loaner_status) : ageStripe(days, thresholds)
-        }
         ${highlighted ? 'ring-2 ring-signal-blue shadow-lift' : ''}`}
     >
+      <div
+        className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl"
+        style={{
+          backgroundColor:
+            vehicle.board === 'loaners' ? loanerStripeColor(vehicle.loaner_status) : ageStripeColor(days, thresholds),
+        }}
+      />
       {!vehicle.completed && (
         <div
           {...listeners}
@@ -384,6 +403,18 @@ export default function VehicleCard({
         >
           <span className={`w-2 h-2 rounded-full ${vehicle.loaner_status === 'out' ? 'bg-signal-blue' : 'bg-signal-green'}`} />
           {vehicle.loaner_status === 'out' ? 'Out with Customer' : 'Here / Available'}
+        </button>
+      )}
+
+      {vehicle.board === 'loaners' && !vehicle.completed && canEditTitleStatus && (
+        <button
+          onClick={handleToggleCarryingCostTracking}
+          disabled={togglingCarryingCostTracking}
+          className={`mt-1.5 ml-7 w-[calc(100%-1.75rem)] text-xs font-medium rounded-lg py-1.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition disabled:opacity-60 ${
+            vehicle.loaner_track_carrying_cost ? 'bg-signal-amber/10 text-signal-amber' : 'bg-gray-50 text-steel'
+          }`}
+        >
+          💰 Carrying cost: {vehicle.loaner_track_carrying_cost ? 'On' : 'Off'}
         </button>
       )}
 

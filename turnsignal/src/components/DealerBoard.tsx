@@ -191,6 +191,39 @@ export default function DealerBoard({
       } else {
         setPhotoCounts(new Map());
       }
+
+      // Due-date-reached check for loaners. There's no real scheduled/cron
+      // infrastructure behind this — it's a plain check that runs every
+      // time the board loads, which is a good match for what was actually
+      // asked for ("let someone know once we've reached that date"),
+      // without needing new server infrastructure to build it properly
+      // later if that's ever worth doing. The notified flag guarantees
+      // this only ever fires once per vehicle, no matter how many times
+      // the board reloads after the date passes.
+      const today = new Date().toISOString().slice(0, 10);
+      const reachedDue = (data ?? []).filter(
+        (v) =>
+          v.board === 'loaners' &&
+          !v.completed &&
+          v.loaner_return_date &&
+          v.loaner_return_date.slice(0, 10) <= today &&
+          !v.loaner_return_date_notified &&
+          v.loaner_return_date_set_by
+      );
+      if (reachedDue.length > 0) {
+        await supabase.from('notifications').insert(
+          reachedDue.map((v) => ({
+            recipient_id: v.loaner_return_date_set_by,
+            dealership_id: dealershipId,
+            vehicle_id: v.id,
+            message: `The due date you set for ${v.stock_number ? v.stock_number + '-' : ''}${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''} has been reached.`,
+          }))
+        );
+        await supabase
+          .from('vehicles')
+          .update({ loaner_return_date_notified: true })
+          .in('id', reachedDue.map((v) => v.id));
+      }
     }
     setLoading(false);
   }, [dealershipId]);

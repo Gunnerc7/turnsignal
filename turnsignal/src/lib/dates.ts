@@ -21,7 +21,7 @@ export type CarryingCostInput = {
   is_new: boolean;
   completed: boolean;
   completed_at: string | null;
-  title_status: 'has_title' | 'poa' | 'waiting' | null;
+  loaner_track_carrying_cost: boolean;
 };
 
 // New: the clock starts when it actually enters Service (or later) —
@@ -32,16 +32,18 @@ export type CarryingCostInput = {
 // Either way, the clock freezes the moment it's marked complete, rather
 // than continuing to climb forever. The Loaners board is normally
 // excluded entirely — those are vehicles already on the lot, not recon
-// inventory accruing holding cost — EXCEPT when title_status is "waiting":
-// a loaner that's still waiting on title is genuinely still a real
-// carrying cost, not just a car out with a customer, so that specific
-// combination is deliberately not excluded.
+// inventory accruing holding cost — EXCEPT when loaner_track_carrying_cost
+// is manually switched on for that specific vehicle. Deliberately a plain
+// manual toggle rather than tied to any one specific reason (like title
+// status): a loaner can be a real, ongoing cost for all kinds of reasons
+// that don't reduce to a single rule, so this just lets a person decide
+// directly, for whatever reason applies to that one vehicle.
 export function carryingCostSoFar(
   vehicle: CarryingCostInput,
   newRatePerDay: number,
   usedRatePerDay: number
 ): number {
-  if (vehicle.board === 'loaners' && vehicle.title_status !== 'waiting') return 0;
+  if (vehicle.board === 'loaners' && !vehicle.loaner_track_carrying_cost) return 0;
 
   const startDate = vehicle.is_new ? vehicle.recon_started_at : vehicle.created_at;
   if (!startDate) return 0;
