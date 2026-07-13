@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   DndContext,
   defaultDropAnimationSideEffects,
@@ -11,7 +11,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { supabase } from '../lib/supabase';
-import { moveVehicleToStage, reorderWithinStage } from '../lib/moveVehicle';
+import { moveVehicleToStage, reorderWithinStage, undoMove, MoveUndoSnapshot } from '../lib/moveVehicle';
 import { BoardConfig, fetchBoards, getBoard } from '../lib/boards';
 import { Vehicle } from '../lib/types';
 import KanbanColumn from './KanbanColumn';
@@ -76,6 +76,15 @@ export default function DealerBoard({
   // updating), separate from whatever it's been previewed into mid-drag.
   const dragOriginStage = useRef<string | null>(null);
   const boardScrollRef = useRef<HTMLDivElement>(null);
+  // Desktop-only additions: a synchronized scrollbar at the top (so you
+  // don't have to scroll all the way down just to see it), and
+  // click-and-drag panning on empty board space, Planner-style.
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const boardRowRef = useRef<HTMLDivElement>(null);
+  const [contentWidth, setContentWidth] = useState(0);
+  const isSyncingScroll = useRef(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef<{ x: number; scrollLeft: number } | null>(null);
 
   // ── Search ────────────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
@@ -273,6 +282,68 @@ export default function DealerBoard({
     boardScrollRef.current?.scrollTo({ left: 0 });
   }, [activeBoardKey]);
 
+  // Keeps the top scrollbar's width accurate to the board's real content
+  // width, whenever it changes — columns added/removed, compact mode
+  // toggled, vehicles added, anything that reflows the row's actual size.
+  useEffect(() => {
+    const row = boardRowRef.current;
+    if (!row) return;
+    const observer = new ResizeObserver(() => {
+      setContentWidth(boardScrollRef.current?.scrollWidth ?? 0);
+    });
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [activeBoardKey]);
+
+  // Two-way sync between the top and bottom scrollbars — the guard flag
+  // stops each side's own scroll event from re-triggering the other in
+  // an infinite loop.
+  function handleTopScroll() {
+    if (isSyncingScroll.current) return;
+    isSyncingScroll.current = true;
+    if (boardScrollRef.current && topScrollRef.current) {
+      boardScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    }
+    requestAnimationFrame(() => (isSyncingScroll.current = false));
+  }
+  function handleMainScroll() {
+    if (isSyncingScroll.current) return;
+    isSyncingScroll.current = true;
+    if (boardScrollRef.current && topScrollRef.current) {
+      topScrollRef.current.scrollLeft = boardScrollRef.current.scrollLeft;
+    }
+    requestAnimationFrame(() => (isSyncingScroll.current = false));
+  }
+
+  // Click-and-drag panning on empty board space — deliberately excludes
+  // anything inside a card, or any button/link/input, via closest(), so
+  // it can never compete with dragging a card or tapping a control.
+  function handleBoardMouseDown(e: ReactMouseEvent) {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('[id^="vehicle-card-"], button, a, input, textarea, select')) return;
+    panStartRef.current = { x: e.clientX, scrollLeft: boardScrollRef.current?.scrollLeft ?? 0 };
+    setIsPanning(true);
+  }
+
+  useEffect(() => {
+    if (!isPanning) return;
+    function onMove(e: MouseEvent) {
+      if (!panStartRef.current || !boardScrollRef.current) return;
+      boardScrollRef.current.scrollLeft = panStartRef.current.scrollLeft - (e.clientX - panStartRef.current.x);
+    }
+    function onUp() {
+      panStartRef.current = null;
+      setIsPanning(false);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [isPanning]);
+
   // Check for a saved add-vehicle draft from a previous session.
   useEffect(() => {
     try {
@@ -287,6 +358,27 @@ export default function DealerBoard({
   }, [dealershipId]);
 
   const [liveFlash, setLiveFlash] = useState(false);
+
+  // Undo toast — Gmail-style, 30 second window. Only ever holds the single
+  // most recent move; a new move replaces whatever was pending, it
+  // doesn't stack.
+  const [undoState, setUndoState] = useState<{ snapshot: MoveUndoSnapshot; label: string } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showUndoToast = useCallback((snapshot: MoveUndoSnapshot, destinationLabel: string) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoState({ snapshot, label: destinationLabel });
+    undoTimerRef.current = setTimeout(() => setUndoState(null), 30000);
+  }, []);
+
+  async function handleUndo() {
+    if (!undoState) return;
+    const { snapshot } = undoState;
+    setUndoState(null);
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    await undoMove(snapshot);
+    loadVehicles();
+  }
 
   // Tracks whether any card's own modal (Notes, Timeline, Photos, etc.) is
   // currently open, across every column — used to hide the floating scan
@@ -391,7 +483,8 @@ export default function DealerBoard({
     ];
 
     if (originStage && originStage !== destinationStage) {
-      await moveVehicleToStage(activeId, activeVehicle.board, destinationStage);
+      const { undo } = await moveVehicleToStage(activeId, activeVehicle.board, destinationStage);
+      if (undo) showUndoToast(undo, locationLabelFor(activeVehicle));
     }
     await reorderWithinStage(newOrderIds);
     loadVehicles();
@@ -514,8 +607,23 @@ export default function DealerBoard({
 
       {activeBoard && (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-          <main ref={boardScrollRef} className="board-scroll flex-1 min-w-0 overflow-x-auto p-4">
-            <div className="flex gap-4 h-full">
+          <div
+            ref={topScrollRef}
+            onScroll={handleTopScroll}
+            className="hidden sm:block board-scroll overflow-x-auto overflow-y-hidden"
+            style={{ height: 14 }}
+          >
+            <div style={{ width: contentWidth, height: 1 }} />
+          </div>
+          <main
+            ref={boardScrollRef}
+            onScroll={handleMainScroll}
+            onMouseDown={handleBoardMouseDown}
+            className={`board-scroll flex-1 min-w-0 overflow-x-auto p-4 ${
+              isPanning ? 'cursor-grabbing select-none' : 'sm:cursor-grab'
+            }`}
+          >
+            <div ref={boardRowRef} className="flex gap-4 h-full">
               {activeBoard.stages.map((stage) => (
                 <KanbanColumn
                   key={stage.key}
@@ -532,6 +640,7 @@ export default function DealerBoard({
                   onAnyCardModalOpenChange={handleAnyCardModalOpenChange}
                   photoCounts={photoCounts}
                   compactMode={compactMode}
+                  onMoveWithUndo={showUndoToast}
                   vehicles={vehicles
                     .filter((v) => v.board === activeBoard.key && v.stage === stage.key)
                     .sort((a, b) => {
@@ -564,6 +673,20 @@ export default function DealerBoard({
             )}
           </DragOverlay>
         </DndContext>
+      )}
+
+      {undoState && (
+        <div className="fixed bottom-24 left-4 right-4 z-30 flex justify-center">
+          <div className="bg-ink text-white rounded-full shadow-lift pl-4 pr-2 py-2 flex items-center gap-3 max-w-sm">
+            <p className="text-sm truncate">Vehicle moved to {undoState.label}.</p>
+            <button
+              onClick={handleUndo}
+              className="text-signal-blue font-semibold text-sm flex-shrink-0 px-2 py-1"
+            >
+              Undo
+            </button>
+          </div>
+        </div>
       )}
 
       {openCardModalCount === 0 && (

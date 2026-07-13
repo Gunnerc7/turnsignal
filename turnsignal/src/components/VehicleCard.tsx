@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useSortable } from '@dnd-kit/sortable';
 import { useAuth } from '../lib/AuthContext';
 import { Vehicle, VehicleNote } from '../lib/types';
-import { moveVehicleToStage } from '../lib/moveVehicle';
+import { moveVehicleToStage, MoveUndoSnapshot } from '../lib/moveVehicle';
 import { supabase } from '../lib/supabase';
 import { BoardConfig } from '../lib/boards';
 import { getThresholds } from '../lib/aging';
@@ -70,6 +70,7 @@ export default function VehicleCard({
   onAnyModalOpenChange,
   photoCount = 0,
   compactMode,
+  onMoveWithUndo,
   onMoved,
 }: {
   vehicle: Vehicle;
@@ -84,6 +85,7 @@ export default function VehicleCard({
   onAnyModalOpenChange?: (open: boolean) => void;
   photoCount?: number;
   compactMode?: boolean;
+  onMoveWithUndo?: (snapshot: MoveUndoSnapshot, destinationLabel: string) => void;
   onMoved: () => void;
 }) {
   const { session, userName } = useAuth();
@@ -141,8 +143,13 @@ export default function VehicleCard({
     if (!newBoard || !newStage) return;
     if (newBoard === vehicle.board && newStage === vehicle.stage) return;
     setMoving(true);
-    await moveVehicleToStage(vehicle.id, newBoard, newStage);
+    const { undo } = await moveVehicleToStage(vehicle.id, newBoard, newStage);
     setMoving(false);
+    if (undo && onMoveWithUndo) {
+      const b = boards.find((bd) => bd.key === newBoard);
+      const s = b?.stages.find((st) => st.key === newStage);
+      onMoveWithUndo(undo, b ? `${b.label}${s ? ` · ${s.label}` : ''}` : newBoard);
+    }
     onMoved();
   }
 
@@ -576,7 +583,10 @@ export default function VehicleCard({
               vehicleLabel={vehicleLabel}
               board={vehicle.board}
               boards={boards}
+              isOwner={isOwner}
+              isManager={isManager}
               onClose={() => setTimelineOpen(false)}
+              onHistoryChanged={onMoved}
             />
           )}
 

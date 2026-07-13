@@ -61,6 +61,11 @@ export default function AddVehicleModal({
   const isNewManuallySet = useRef(isEditing); // editing an existing vehicle never auto-overrides its flag
   const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : (savedDraft?.mileage ?? ''));
   const [assignedToId, setAssignedToId] = useState(vehicle?.assigned_to_id ?? savedDraft?.assignedToId ?? '');
+  // Only meaningful when creating a new vehicle — lets someone jot down a
+  // note (or a few) right in this same form instead of having to close it
+  // and reopen Notes separately right after.
+  const [pendingNotes, setPendingNotes] = useState<string[]>(savedDraft?.pendingNotes ?? []);
+  const [noteDraft, setNoteDraft] = useState('');
   const [loanerReturnDate, setLoanerReturnDate] = useState(vehicle?.loaner_return_date?.slice(0, 10) ?? '');
   // Which board this vehicle is actually on (or heading to) — used to
   // decide whether the loaner-specific due date field is relevant at all.
@@ -101,13 +106,13 @@ export default function AddVehicleModal({
   // new vehicles, not edits (edits have a database record already).
   useEffect(() => {
     if (isEditing) return;
-    const hasAnyData = vin || stockNumber || year || make;
+    const hasAnyData = vin || stockNumber || year || make || pendingNotes.length > 0;
     if (!hasAnyData) return;
     sessionStorage.setItem('ts-add-draft', JSON.stringify({
       dealershipId, destination, vin, year, make, model, trim,
-      color, stockNumber, hasDamage, isNew, mileage, assignedToId,
+      color, stockNumber, hasDamage, isNew, mileage, assignedToId, pendingNotes,
     }));
-  }, [dealershipId, destination, vin, year, make, model, trim, color, stockNumber, hasDamage, isNew, mileage, assignedToId, isEditing]);
+  }, [dealershipId, destination, vin, year, make, model, trim, color, stockNumber, hasDamage, isNew, mileage, assignedToId, pendingNotes, isEditing]);
 
   useEffect(() => {
     supabase
@@ -255,7 +260,22 @@ export default function AddVehicleModal({
       setError(insertError.message);
       return;
     }
-    if (created) await notifyAssignee(created.id);
+    if (created) {
+      await notifyAssignee(created.id);
+      // Inserted exactly like any note added the normal way afterward —
+      // same table, same author/timestamp fields — so there's no visible
+      // difference once the card is open.
+      if (pendingNotes.length > 0) {
+        await supabase.from('vehicle_notes').insert(
+          pendingNotes.map((content) => ({
+            vehicle_id: created.id,
+            content,
+            author_email: session?.user.email ?? null,
+            author_name: userName,
+          }))
+        );
+      }
+    }
     sessionStorage.removeItem('ts-add-draft');
     onCreated(created?.id);
   }
@@ -469,6 +489,48 @@ export default function AddVehicleModal({
               <p className="text-xs text-steel mt-1">
                 You'll get a notification once this date is reached — leave blank if there isn't one.
               </p>
+            </div>
+          )}
+
+          {!isEditing && (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Notes (optional)</label>
+              {pendingNotes.length > 0 && (
+                <div className="space-y-1.5 mb-2">
+                  {pendingNotes.map((note, i) => (
+                    <div key={i} className="flex items-start justify-between gap-2 bg-asphalt rounded-lg px-3 py-2">
+                      <p className="text-sm text-ink whitespace-pre-wrap flex-1">{note}</p>
+                      <button
+                        onClick={() => setPendingNotes((prev) => prev.filter((_, idx) => idx !== i))}
+                        aria-label="Remove note"
+                        className="text-steel flex-shrink-0"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <textarea
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                  placeholder="Add a note…"
+                  rows={2}
+                  className="flex-1 text-sm border border-gray-300 rounded-lg py-2 px-3 resize-none focus:outline-none focus:ring-2 focus:ring-signal-blue"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  if (!noteDraft.trim()) return;
+                  setPendingNotes((prev) => [...prev, noteDraft.trim()]);
+                  setNoteDraft('');
+                }}
+                disabled={!noteDraft.trim()}
+                className="mt-1.5 text-signal-blue text-sm font-medium disabled:opacity-40"
+              >
+                + Add note
+              </button>
             </div>
           )}
 

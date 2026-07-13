@@ -3,6 +3,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { BoardConfig } from '../lib/boards';
 import { Vehicle } from '../lib/types';
+import { MoveUndoSnapshot } from '../lib/moveVehicle';
 import VehicleCard from './VehicleCard';
 
 export default function KanbanColumn({
@@ -20,6 +21,7 @@ export default function KanbanColumn({
   onAnyCardModalOpenChange,
   photoCounts,
   compactMode,
+  onMoveWithUndo,
   onAddClick,
   onMoved,
 }: {
@@ -37,6 +39,7 @@ export default function KanbanColumn({
   onAnyCardModalOpenChange?: (open: boolean) => void;
   photoCounts: Map<string, number>;
   compactMode?: boolean;
+  onMoveWithUndo?: (snapshot: MoveUndoSnapshot, destinationLabel: string) => void;
   onAddClick: () => void;
   onMoved: () => void;
 }) {
@@ -100,6 +103,7 @@ export default function KanbanColumn({
                     onAnyModalOpenChange={onAnyCardModalOpenChange}
                     photoCount={photoCounts.get(v.id) ?? 0}
                     compactMode={compactMode}
+                    onMoveWithUndo={onMoveWithUndo}
                     onMoved={onMoved}
                   />
                 ))}
@@ -132,6 +136,7 @@ export default function KanbanColumn({
                         onAnyModalOpenChange={onAnyCardModalOpenChange}
                         photoCount={photoCounts.get(v.id) ?? 0}
                         compactMode={compactMode}
+                        onMoveWithUndo={onMoveWithUndo}
                         onMoved={onMoved}
                       />
                     ))}
