@@ -162,9 +162,10 @@ export default function DealerBoard({
   // doesn't accidentally start a drag — only a deliberate press-and-move does.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  const loadVehicles = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadVehicles = useCallback(
+    async (isInitial = false) => {
+      if (isInitial) setLoading(true);
+      setError(null);
 
     const { data, error: vehiclesError } = await supabase
       .from('vehicles')
@@ -225,8 +226,10 @@ export default function DealerBoard({
           .in('id', reachedDue.map((v) => v.id));
       }
     }
-    setLoading(false);
-  }, [dealershipId]);
+    if (isInitial) setLoading(false);
+    },
+    [dealershipId]
+  );
 
   const loadBoards = useCallback(async () => {
     const fetched = await fetchBoards(dealershipId);
@@ -246,7 +249,7 @@ export default function DealerBoard({
   }, [dealershipId]);
 
   useEffect(() => {
-    loadVehicles();
+    loadVehicles(true);
     loadBoards();
     loadThresholds();
   }, [loadVehicles, loadBoards, loadThresholds, refreshKey]);
