@@ -8,6 +8,7 @@ export type MoveUndoSnapshot = {
   previousReconStartedAt: string | null;
   reconStartedAtWasNewlySet: boolean;
   previousLoanerStatus: 'here' | 'out' | null;
+  previousPosition: number | null;
   closedHistoryRowId: string | null;
   newHistoryRowId: string | null;
 };
@@ -24,7 +25,7 @@ export async function moveVehicleToStage(vehicleId: string, newBoard: string, ne
 
   const { data: vehicle } = await supabase
     .from('vehicles')
-    .select('board, stage, stage_entered_at, recon_started_at, loaner_status')
+    .select('board, stage, stage_entered_at, recon_started_at, loaner_status, position')
     .eq('id', vehicleId)
     .single();
 
@@ -76,6 +77,7 @@ export async function moveVehicleToStage(vehicleId: string, newBoard: string, ne
         previousReconStartedAt: vehicle.recon_started_at,
         reconStartedAtWasNewlySet,
         previousLoanerStatus: vehicle.loaner_status,
+        previousPosition: vehicle.position,
         closedHistoryRowId: openHistoryRow?.id ?? null,
         newHistoryRowId: newHistoryRow?.id ?? null,
       }
@@ -101,6 +103,7 @@ export async function undoMove(snapshot: MoveUndoSnapshot) {
     stage: snapshot.previousStage,
     stage_entered_at: snapshot.previousStageEnteredAt,
     loaner_status: snapshot.previousLoanerStatus,
+    position: snapshot.previousPosition,
   };
   if (snapshot.reconStartedAtWasNewlySet) {
     updates.recon_started_at = snapshot.previousReconStartedAt;

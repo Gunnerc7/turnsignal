@@ -62,10 +62,14 @@ export default function AddVehicleModal({
   const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : (savedDraft?.mileage ?? ''));
   const [assignedToId, setAssignedToId] = useState(vehicle?.assigned_to_id ?? savedDraft?.assignedToId ?? '');
   // Only meaningful when creating a new vehicle — lets someone jot down a
-  // note (or a few) right in this same form instead of having to close it
-  // and reopen Notes separately right after.
-  const [pendingNotes, setPendingNotes] = useState<string[]>(savedDraft?.pendingNotes ?? []);
+  // note (or a few, each optionally tagging people) right in this same
+  // form instead of having to close it and reopen Notes separately.
+  const [pendingNotes, setPendingNotes] = useState<{ content: string; taggedIds: string[] }[]>(
+    savedDraft?.pendingNotes ?? []
+  );
   const [noteDraft, setNoteDraft] = useState('');
+  const [noteDraftTaggedIds, setNoteDraftTaggedIds] = useState<string[]>([]);
+  const [noteTagPickerOpen, setNoteTagPickerOpen] = useState(false);
   const [loanerReturnDate, setLoanerReturnDate] = useState(vehicle?.loaner_return_date?.slice(0, 10) ?? '');
   // Which board this vehicle is actually on (or heading to) — used to
   // decide whether the loaner-specific due date field is relevant at all.
@@ -263,17 +267,48 @@ export default function AddVehicleModal({
     if (created) {
       await notifyAssignee(created.id);
       // Inserted exactly like any note added the normal way afterward —
-      // same table, same author/timestamp fields — so there's no visible
-      // difference once the card is open.
+      // same table, same author/timestamp/tagging fields — so there's no
+      // visible difference once the card is open. The vehicle itself has
+      // already been created successfully by this point, so a notes
+      // failure here can't be silently swallowed — it has to actually
+      // reach the person, via alert() specifically, since the modal is
+      // about to close either way and a normal inline error would
+      // disappear with it before anyone could read it.
       if (pendingNotes.length > 0) {
-        await supabase.from('vehicle_notes').insert(
-          pendingNotes.map((content) => ({
+        const noteRows = pendingNotes.map((note) => {
+          const taggedMembers = members.filter((m) => note.taggedIds.includes(m.id));
+          return {
             vehicle_id: created.id,
-            content,
+            content: note.content,
             author_email: session?.user.email ?? null,
             author_name: userName,
-          }))
-        );
+            tagged_user_ids: taggedMembers.map((m) => m.id),
+            tagged_user_names: taggedMembers.map((m) => m.label),
+          };
+        });
+        const { error: notesError } = await supabase.from('vehicle_notes').insert(noteRows);
+        if (notesError) {
+          window.alert(
+            `The vehicle was saved, but the notes couldn't be added: ${notesError.message}. You can add them from the Notes button on the card instead.`
+          );
+        } else {
+          const notificationRows: { recipient_id: string; dealership_id: string; vehicle_id: string; message: string }[] = [];
+          pendingNotes.forEach((note) => {
+            const taggedMembers = members.filter((m) => note.taggedIds.includes(m.id));
+            taggedMembers.forEach((m) => {
+              const preview = note.content.length > 80 ? note.content.slice(0, 80) + '…' : note.content;
+              notificationRows.push({
+                recipient_id: m.id,
+                dealership_id: dealershipId,
+                vehicle_id: created.id,
+                message: `${userName ?? 'Someone'} tagged you on a note for ${vehicleLabelForNotification}: "${preview}"`,
+              });
+            });
+          });
+          if (notificationRows.length > 0) {
+            await supabase.from('notifications').insert(notificationRows);
+          }
+        }
       }
     }
     sessionStorage.removeItem('ts-add-draft');
@@ -499,7 +534,14 @@ export default function AddVehicleModal({
                 <div className="space-y-1.5 mb-2">
                   {pendingNotes.map((note, i) => (
                     <div key={i} className="flex items-start justify-between gap-2 bg-asphalt rounded-lg px-3 py-2">
-                      <p className="text-sm text-ink whitespace-pre-wrap flex-1">{note}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-ink whitespace-pre-wrap">{note.content}</p>
+                        {note.taggedIds.length > 0 && (
+                          <p className="text-[11px] text-signal-blue font-medium mt-0.5">
+                            🏷️ Tagged: {members.filter((m) => note.taggedIds.includes(m.id)).map((m) => m.label).join(', ')}
+                          </p>
+                        )}
+                      </div>
                       <button
                         onClick={() => setPendingNotes((prev) => prev.filter((_, idx) => idx !== i))}
                         aria-label="Remove note"
@@ -511,26 +553,105 @@ export default function AddVehicleModal({
                   ))}
                 </div>
               )}
-              <div className="flex gap-2">
-                <textarea
-                  value={noteDraft}
-                  onChange={(e) => setNoteDraft(e.target.value)}
-                  placeholder="Add a note…"
-                  rows={2}
-                  className="flex-1 text-sm border border-gray-300 rounded-lg py-2 px-3 resize-none focus:outline-none focus:ring-2 focus:ring-signal-blue"
-                />
+              <textarea
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                placeholder="Add a note…"
+                rows={2}
+                className="w-full text-sm border border-gray-300 rounded-lg py-2 px-3 resize-none focus:outline-none focus:ring-2 focus:ring-signal-blue"
+              />
+
+              {noteDraftTaggedIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {members
+                    .filter((m) => noteDraftTaggedIds.includes(m.id))
+                    .map((m) => (
+                      <span
+                        key={m.id}
+                        className="text-xs bg-signal-blue/10 text-signal-blue font-medium rounded-full pl-2.5 pr-1.5 py-1 flex items-center gap-1"
+                      >
+                        {m.label}
+                        <button
+                          onClick={() => setNoteDraftTaggedIds((prev) => prev.filter((id) => id !== m.id))}
+                          aria-label={`Remove ${m.label}`}
+                          className="text-signal-blue"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                </div>
+              )}
+
+              <div className="relative mt-2 flex items-center justify-between">
+                <div className="relative">
+                  <button
+                    onClick={() => setNoteTagPickerOpen((o) => !o)}
+                    className="text-xs text-steel font-medium flex items-center gap-1 py-1"
+                  >
+                    🏷️ {noteDraftTaggedIds.length > 0 ? `${noteDraftTaggedIds.length} tagged` : 'Tag people'}
+                  </button>
+
+                  {noteTagPickerOpen && (
+                    <>
+                      <button
+                        className="fixed inset-0 z-40 cursor-default"
+                        aria-label="Close tag picker"
+                        onClick={() => setNoteTagPickerOpen(false)}
+                      />
+                      <div className="absolute left-0 bottom-full mb-1 bg-white rounded-lg shadow-lift border border-gray-200 w-56 max-h-56 overflow-y-auto z-50">
+                        {members.length === 0 ? (
+                          <p className="text-steel text-xs p-3">No other team members yet.</p>
+                        ) : (
+                          members.map((m) => (
+                            <button
+                              key={m.id}
+                              onClick={() =>
+                                setNoteDraftTaggedIds((prev) =>
+                                  prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id]
+                                )
+                              }
+                              className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm hover:bg-asphalt"
+                            >
+                              <span
+                                className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
+                                  noteDraftTaggedIds.includes(m.id) ? 'bg-signal-blue border-signal-blue' : 'border-gray-300'
+                                }`}
+                              >
+                                {noteDraftTaggedIds.includes(m.id) && (
+                                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                                    <path
+                                      d="M3 8.5L6.5 12L13 4"
+                                      stroke="white"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                )}
+                              </span>
+                              <span className="text-ink truncate">{m.label}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (!noteDraft.trim()) return;
+                    setPendingNotes((prev) => [...prev, { content: noteDraft.trim(), taggedIds: noteDraftTaggedIds }]);
+                    setNoteDraft('');
+                    setNoteDraftTaggedIds([]);
+                  }}
+                  disabled={!noteDraft.trim()}
+                  className="text-signal-blue text-sm font-medium disabled:opacity-40"
+                >
+                  + Add note
+                </button>
               </div>
-              <button
-                onClick={() => {
-                  if (!noteDraft.trim()) return;
-                  setPendingNotes((prev) => [...prev, noteDraft.trim()]);
-                  setNoteDraft('');
-                }}
-                disabled={!noteDraft.trim()}
-                className="mt-1.5 text-signal-blue text-sm font-medium disabled:opacity-40"
-              >
-                + Add note
-              </button>
             </div>
           )}
 
