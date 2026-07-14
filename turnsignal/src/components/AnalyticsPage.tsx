@@ -96,6 +96,7 @@ type VehicleRow = {
   title_status: 'has_title' | 'poa' | 'waiting' | null;
   title_status_updated_at: string | null;
   loaner_track_carrying_cost: boolean;
+  carrying_cost_excluded: boolean;
   loaner_return_date: string | null;
   created_at: string;
   stock_number: string | null;
@@ -162,7 +163,7 @@ export default function AnalyticsPage({
       const { data: vehiclesData } = await supabase
         .from('vehicles')
         .select(
-          'id, board, stage, stage_entered_at, recon_started_at, completed, completed_at, has_damage, is_new, title_status, title_status_updated_at, loaner_track_carrying_cost, loaner_return_date, created_at, stock_number, year, make, model, completed_by_name'
+          'id, board, stage, stage_entered_at, recon_started_at, completed, completed_at, has_damage, is_new, title_status, title_status_updated_at, loaner_track_carrying_cost, carrying_cost_excluded, loaner_return_date, created_at, stock_number, year, make, model, completed_by_name'
         )
         .eq('dealership_id', dealershipId);
 

@@ -93,6 +93,7 @@ export default function VehicleCard({
   const [toggling, setToggling] = useState(false);
   const [togglingLoaner, setTogglingLoaner] = useState(false);
   const [togglingCarryingCostTracking, setTogglingCarryingCostTracking] = useState(false);
+  const [togglingCarryingCostExcluded, setTogglingCarryingCostExcluded] = useState(false);
   const [notes, setNotes] = useState<VehicleNote[]>([]);
   const [notesOpen, setNotesOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -189,6 +190,16 @@ export default function VehicleCard({
       .update({ loaner_track_carrying_cost: !vehicle.loaner_track_carrying_cost })
       .eq('id', vehicle.id);
     setTogglingCarryingCostTracking(false);
+    onMoved();
+  }
+
+  async function handleToggleCarryingCostExcluded() {
+    setTogglingCarryingCostExcluded(true);
+    await supabase
+      .from('vehicles')
+      .update({ carrying_cost_excluded: !vehicle.carrying_cost_excluded })
+      .eq('id', vehicle.id);
+    setTogglingCarryingCostExcluded(false);
     onMoved();
   }
 
@@ -502,6 +513,29 @@ export default function VehicleCard({
             </span>
           )}
         </button>
+
+        {canEditTitleStatus && vehicle.board !== 'loaners' && vehicle.stage !== 'inbound_trade_in' && !vehicle.completed && (
+          <button
+            onClick={handleToggleCarryingCostExcluded}
+            disabled={togglingCarryingCostExcluded}
+            aria-label={
+              vehicle.carrying_cost_excluded
+                ? 'Carrying cost excluded for this vehicle — tap to include it again'
+                : 'Exclude this vehicle from carrying cost'
+            }
+            className={`rounded-md px-2.5 disabled:opacity-60 ${
+              vehicle.carrying_cost_excluded ? 'bg-signal-amber/10 text-signal-amber' : 'bg-gray-50 text-steel'
+            }`}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M8 4.5v7M6 10.2c0 .8.9 1.3 2 1.3s2-.6 2-1.4c0-1-.8-1.3-2-1.6-1.2-.3-2-.7-2-1.6 0-.8.9-1.4 2-1.4s2 .5 2 1.3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+              {vehicle.carrying_cost_excluded && (
+                <line x1="2.5" y1="13.5" x2="13.5" y2="2.5" stroke="currentColor" strokeWidth="1.3" />
+              )}
+            </svg>
+          </button>
+        )}
 
         {canEditTitleStatus ? (
           <button

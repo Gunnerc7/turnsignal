@@ -113,24 +113,33 @@ export default function StageTimelineModal({
     setEditExitedAt(row.exited_at ? toDatetimeLocal(row.exited_at) : '');
   }
 
+  // Deliberately can never block the real edit/delete below it — the
+  // audit log is a secondary record, and a failure writing it (say, the
+  // migration for this table hasn't been run yet) shouldn't be able to
+  // silently stop the actual action the person is waiting on.
   async function logEdit(
     row: StageHistoryRow,
     action: 'edit' | 'delete',
     newEnteredAt: string | null,
     newExitedAt: string | null
   ) {
-    await supabase.from('stage_history_edits').insert({
-      vehicle_id: vehicleId,
-      stage_history_id: row.id,
-      edited_by_id: session?.user.id ?? null,
-      edited_by_name: userName,
-      action,
-      stage: row.stage,
-      original_entered_at: row.entered_at,
-      original_exited_at: row.exited_at,
-      new_entered_at: newEnteredAt,
-      new_exited_at: newExitedAt,
-    });
+    try {
+      const { error } = await supabase.from('stage_history_edits').insert({
+        vehicle_id: vehicleId,
+        stage_history_id: row.id,
+        edited_by_id: session?.user.id ?? null,
+        edited_by_name: userName,
+        action,
+        stage: row.stage,
+        original_entered_at: row.entered_at,
+        original_exited_at: row.exited_at,
+        new_entered_at: newEnteredAt,
+        new_exited_at: newExitedAt,
+      });
+      if (error) console.error('Failed to write history audit log:', error.message);
+    } catch (err) {
+      console.error('Failed to write history audit log:', err);
+    }
   }
 
   async function handleSaveEdit(row: StageHistoryRow) {

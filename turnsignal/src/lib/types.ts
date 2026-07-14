@@ -15,6 +15,7 @@ export type Vehicle = {
   loaner_return_date_set_by: string | null;
   loaner_return_date_notified: boolean;
   loaner_track_carrying_cost: boolean;
+  carrying_cost_excluded: boolean;
   notes: string | null;
   created_at: string;
   updated_at: string;

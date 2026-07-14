@@ -57,6 +57,7 @@ export default function AddVehicleModal({
   const [color, setColor] = useState(vehicle?.color ?? savedDraft?.color ?? '');
   const [stockNumber, setStockNumber] = useState(vehicle?.stock_number ?? savedDraft?.stockNumber ?? '');
   const [hasDamage, setHasDamage] = useState(vehicle?.has_damage ?? savedDraft?.hasDamage ?? false);
+  const [carryingCostExcluded, setCarryingCostExcluded] = useState(vehicle?.carrying_cost_excluded ?? false);
   const [isNew, setIsNew] = useState(vehicle?.is_new ?? savedDraft?.isNew ?? suggestIsNew(vehicle?.year ?? null));
   const isNewManuallySet = useRef(isEditing); // editing an existing vehicle never auto-overrides its flag
   const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : (savedDraft?.mileage ?? ''));
@@ -205,6 +206,7 @@ export default function AddVehicleModal({
       stock_number: stockNumber.trim() || null,
       mileage: mileage.trim() ? parseInt(mileage, 10) : null,
       has_damage: hasDamage,
+      carrying_cost_excluded: carryingCostExcluded,
       is_new: isNew,
       assigned_to_id: assignedToId || null,
       assigned_to_name: assignedToId ? assignedMember?.label ?? null : null,
@@ -495,6 +497,21 @@ export default function AddVehicleModal({
             <span className="text-sm font-medium text-ink">New vehicle</span>
             <span className="text-xs text-steel">(unchecked = used — affects holding cost)</span>
           </label>
+
+          <label className="flex items-center gap-2 py-1">
+            <input
+              type="checkbox"
+              checked={carryingCostExcluded}
+              onChange={(e) => setCarryingCostExcluded(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <span className="text-sm font-medium text-ink">Exclude from carrying cost</span>
+          </label>
+          {carryingCostExcluded && (
+            <p className="text-xs text-steel -mt-2">
+              e.g. an already-sold vehicle back in briefly for a re-detail — won't count toward carrying cost while this is checked.
+            </p>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Assign to (optional)</label>

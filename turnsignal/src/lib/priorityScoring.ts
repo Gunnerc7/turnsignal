@@ -31,7 +31,7 @@ export type PriorityVehicleInput = {
   title_status: 'has_title' | 'poa' | 'waiting' | null;
   loaner_return_date: string | null;
   loaner_track_carrying_cost: boolean;
-  stock_number: string | null;
+  carrying_cost_excluded: boolean;
   year: number | null;
   make: string | null;
   model: string | null;
@@ -59,6 +59,7 @@ function toCarryingCostInput(v: PriorityVehicleInput): CarryingCostInput {
     completed: v.completed,
     completed_at: v.completed_at,
     loaner_track_carrying_cost: v.loaner_track_carrying_cost,
+    carrying_cost_excluded: v.carrying_cost_excluded,
   };
 }
 
