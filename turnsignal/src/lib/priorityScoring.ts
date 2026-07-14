@@ -32,6 +32,7 @@ export type PriorityVehicleInput = {
   loaner_return_date: string | null;
   loaner_track_carrying_cost: boolean;
   carrying_cost_excluded: boolean;
+  stock_number: string | null;
   year: number | null;
   make: string | null;
   model: string | null;
