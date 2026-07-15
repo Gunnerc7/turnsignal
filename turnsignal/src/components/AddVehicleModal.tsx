@@ -31,7 +31,7 @@ export default function AddVehicleModal({
   initialVin?: string;
   restoreDraft?: boolean;
   onClose: () => void;
-  onCreated: (newVehicleId?: string) => void;
+  onCreated: (newVehicleId?: string, board?: string) => void;
 }) {
   const { session, userName } = useAuth();
   const isEditing = !!vehicle;
@@ -310,6 +310,15 @@ export default function AddVehicleModal({
         return;
       }
       await notifyAssignee(vehicle.id);
+      // Whatever's sitting in the note composer at Save time gets
+      // captured too — someone typing a note and hitting the main Save
+      // button (rather than the separate, smaller "+ Add note" button)
+      // is the natural thing to do, since that's exactly how saving a
+      // note already works when first adding a vehicle. Without this,
+      // that note would just silently vanish the moment this modal closes.
+      if (editNoteDraft.trim()) {
+        await handleAddNoteToExistingVehicle();
+      }
       sessionStorage.removeItem('ts-add-draft');
       onCreated();
       return;
@@ -335,16 +344,24 @@ export default function AddVehicleModal({
     }
     if (created) {
       await notifyAssignee(created.id);
-      // Inserted exactly like any note added the normal way afterward —
-      // same table, same author/timestamp/tagging fields — so there's no
-      // visible difference once the card is open. The vehicle itself has
-      // already been created successfully by this point, so a notes
-      // failure here can't be silently swallowed — it has to actually
-      // reach the person, via alert() specifically, since the modal is
-      // about to close either way and a normal inline error would
-      // disappear with it before anyone could read it.
-      if (pendingNotes.length > 0) {
-        const noteRows = pendingNotes.map((note) => {
+      // TEMPORARY diagnostic — fires every time, success or failure, to
+      // pin down exactly what's happening after repeated reports of notes
+      // not showing up with no visible error at all. Safe to simplify
+      // back down once that's confirmed.
+      // Whatever's still sitting in the note box at Save time gets
+      // included too — typing a note and going straight to the main
+      // Save button, without also tapping the smaller "+ Add note"
+      // button first, is a completely natural thing to do. This is the
+      // exact same fix already applied to editing an existing vehicle;
+      // it just hadn't been applied here too.
+      const allPendingNotes = noteDraft.trim()
+        ? [...pendingNotes, { content: noteDraft.trim(), taggedIds: noteDraftTaggedIds }]
+        : pendingNotes;
+
+      if (allPendingNotes.length === 0) {
+        // Nothing typed and nothing added — genuinely nothing to save.
+      } else {
+        const noteRows = allPendingNotes.map((note) => {
           const taggedMembers = members.filter((m) => note.taggedIds.includes(m.id));
           return {
             vehicle_id: created.id,
@@ -358,24 +375,18 @@ export default function AddVehicleModal({
         const { error: notesError } = await supabase.from('vehicle_notes').insert(noteRows);
         if (notesError) {
           window.alert(
-            `The vehicle was saved, but the notes couldn't be added: ${notesError.message}. You can add them from the Notes button on the card instead.`
+            `DIAGNOSTIC: Tried to save ${noteRows.length} note(s) for vehicle ${created.id}.\n\nInsert FAILED: ${notesError.message} (code: ${notesError.code ?? 'none'})`
           );
         } else {
-          // Confirms the notes are genuinely there, not just that the
-          // insert call returned without an error — if this ever comes
-          // back short, that's a specific, useful signal rather than a
-          // guess at what went wrong.
-          const { count } = await supabase
+          const { count, error: verifyError } = await supabase
             .from('vehicle_notes')
             .select('id', { count: 'exact', head: true })
             .eq('vehicle_id', created.id);
-          if ((count ?? 0) < noteRows.length) {
-            window.alert(
-              `The vehicle was saved, but only ${count ?? 0} of ${noteRows.length} note(s) actually saved. You can add the rest from the Notes button on the card.`
-            );
-          }
+          window.alert(
+            `DIAGNOSTIC: Tried to save ${noteRows.length} note(s) for vehicle ${created.id}.\n\nInsert reported success. Reading back found ${count ?? 'null'} note(s) for this vehicle.${verifyError ? ` Verify read error: ${verifyError.message}` : ''}`
+          );
           const notificationRows: { recipient_id: string; dealership_id: string; vehicle_id: string; message: string }[] = [];
-          pendingNotes.forEach((note) => {
+          allPendingNotes.forEach((note) => {
             const taggedMembers = members.filter((m) => note.taggedIds.includes(m.id));
             taggedMembers.forEach((m) => {
               const preview = note.content.length > 80 ? note.content.slice(0, 80) + '…' : note.content;
@@ -394,7 +405,7 @@ export default function AddVehicleModal({
       }
     }
     sessionStorage.removeItem('ts-add-draft');
-    onCreated(created?.id);
+    onCreated(created?.id, finalBoard);
   }
 
   async function handleDelete() {

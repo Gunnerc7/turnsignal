@@ -35,6 +35,8 @@ export default function DealerBoard({
   refreshKey,
   navigateTarget,
   onNavigateHandled,
+  groupId,
+  onNavigateToSiblingStore,
 }: {
   dealershipId: string;
   isOwner: boolean;
@@ -42,6 +44,8 @@ export default function DealerBoard({
   refreshKey?: number;
   navigateTarget?: { vehicleId: string; board: string } | null;
   onNavigateHandled?: () => void;
+  groupId?: string | null;
+  onNavigateToSiblingStore?: (dealership: { id: string; name: string }, vehicleId: string, board: string) => void;
 }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [photoCounts, setPhotoCounts] = useState<Map<string, number>>(new Map());
@@ -60,7 +64,7 @@ export default function DealerBoard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addModal, setAddModal] = useState<
-    { board: string; stage: string; restoreDraft?: boolean; initialVin?: string } | null
+    { board?: string; stage?: string; restoreDraft?: boolean; initialVin?: string } | null
   >(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [manageBoardsOpen, setManageBoardsOpen] = useState(false);
@@ -89,6 +93,68 @@ export default function DealerBoard({
   // ── Search ────────────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // Cross-store search — only relevant when this dealership is part of a
+  // group. Sibling store names are fetched once per group, not per
+  // keystroke; the actual vehicle search against them is debounced.
+  const [siblingStores, setSiblingStores] = useState<{ id: string; name: string }[]>([]);
+  const [groupSearchResults, setGroupSearchResults] = useState<
+    { id: string; board: string; stock_number: string | null; vin: string | null; year: number | null; make: string | null; model: string | null; dealershipId: string; dealershipName: string }[]
+  >([]);
+  const [groupSearching, setGroupSearching] = useState(false);
+
+  useEffect(() => {
+    if (!groupId) {
+      setSiblingStores([]);
+      return;
+    }
+    supabase
+      .from('dealerships')
+      .select('id, name')
+      .eq('group_id', groupId)
+      .neq('id', dealershipId)
+      .then(({ data }) => setSiblingStores(data ?? []));
+  }, [groupId, dealershipId]);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q || siblingStores.length === 0) {
+      setGroupSearchResults([]);
+      return;
+    }
+    setGroupSearching(true);
+    const timeout = setTimeout(async () => {
+      const siblingIds = siblingStores.map((s) => s.id);
+      const { data } = await supabase
+        .from('vehicles')
+        .select('id, board, stock_number, vin, year, make, model, dealership_id')
+        .in('dealership_id', siblingIds)
+        .eq('completed', false)
+        .or(`stock_number.ilike.%${q}%,vin.ilike.%${q}%,make.ilike.%${q}%,model.ilike.%${q}%`)
+        .limit(10);
+      const storeNameFor = (id: string) => siblingStores.find((s) => s.id === id)?.name ?? 'Another store';
+      setGroupSearchResults(
+        (data ?? []).map((v) => ({
+          id: v.id,
+          board: v.board,
+          stock_number: v.stock_number,
+          vin: v.vin,
+          year: v.year,
+          make: v.make,
+          model: v.model,
+          dealershipId: v.dealership_id,
+          dealershipName: storeNameFor(v.dealership_id),
+        }))
+      );
+      setGroupSearching(false);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [searchQuery, siblingStores]);
+
+  function handleGroupSearchSelect(result: (typeof groupSearchResults)[number]) {
+    setSearchQuery('');
+    setSearchOpen(false);
+    onNavigateToSiblingStore?.({ id: result.dealershipId, name: result.dealershipName }, result.id, result.board);
+  }
   const [highlightedVehicleId, setHighlightedVehicleId] = useState<string | null>(null);
   const pendingScrollVehicleId = useRef<string | null>(null);
 
@@ -597,6 +663,31 @@ export default function DealerBoard({
                     ))
                   )
                 )}
+                {searchQuery.trim() && siblingStores.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 bg-asphalt border-b border-gray-100">
+                      <p className="text-[11px] font-semibold text-steel uppercase tracking-wide">
+                        {groupSearching ? 'Searching other stores…' : 'Other stores in your group'}
+                      </p>
+                    </div>
+                    {!groupSearching && groupSearchResults.length === 0 && (
+                      <p className="text-steel text-sm p-3">No matches elsewhere in the group.</p>
+                    )}
+                    {groupSearchResults.map((result) => (
+                      <button
+                        key={result.id}
+                        onClick={() => handleGroupSearchSelect(result)}
+                        className="w-full text-left px-3 py-2.5 border-b border-gray-50 last:border-0 hover:bg-asphalt"
+                      >
+                        <p className="text-sm font-medium text-ink truncate">
+                          {result.stock_number ? `${result.stock_number}-` : ''}
+                          {result.year ?? ''} {result.make} {result.model}
+                        </p>
+                        <p className="text-xs text-signal-blue font-medium">→ {result.dealershipName}</p>
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
             </>
           )}
@@ -713,9 +804,7 @@ export default function DealerBoard({
           vehicles={vehicles}
           onClose={() => setScanModalOpen(false)}
           onMoved={loadVehicles}
-          onNotFound={(vin) =>
-            setAddModal({ board: 'main', stage: 'inbound_trade_in', initialVin: vin })
-          }
+          onNotFound={(vin) => setAddModal({ initialVin: vin })}
         />
       )}
 
@@ -751,8 +840,7 @@ export default function DealerBoard({
           restoreDraft={addModal.restoreDraft ?? false}
           initialVin={addModal.initialVin}
           onClose={() => setAddModal(null)}
-          onCreated={async (newVehicleId) => {
-            const targetBoard = addModal.board;
+          onCreated={async (newVehicleId, actualBoard) => {
             setAddModal(null);
             setHasDraft(false);
             await loadVehicles();
@@ -762,10 +850,10 @@ export default function DealerBoard({
             // get, so adding a vehicle ends by showing you that exact
             // card instead of leaving you wherever the board happened to
             // be scrolled before.
-            if (newVehicleId) {
-              if (targetBoard !== activeBoardKey) {
+            if (newVehicleId && actualBoard) {
+              if (actualBoard !== activeBoardKey) {
                 pendingScrollVehicleId.current = newVehicleId;
-                setActiveBoardKey(targetBoard);
+                setActiveBoardKey(actualBoard);
               } else {
                 setTimeout(() => scrollToAndHighlight(newVehicleId), 60);
               }

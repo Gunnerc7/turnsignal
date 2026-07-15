@@ -270,6 +270,11 @@ export default function Dashboard() {
             refreshKey={boardRefreshKey}
             navigateTarget={navigateTarget}
             onNavigateHandled={() => setNavigateTarget(null)}
+            groupId={relevantGroupId}
+            onNavigateToSiblingStore={(dealership, vehicleId, board) => {
+              setViewingAsOwner({ ...dealership, group_id: relevantGroupId });
+              setNavigateTarget({ vehicleId, board });
+            }}
           />
         ) : (
           <DealershipPicker onSelect={setViewingAsOwner} />
@@ -289,6 +294,12 @@ export default function Dashboard() {
           refreshKey={boardRefreshKey}
           navigateTarget={navigateTarget}
           onNavigateHandled={() => setNavigateTarget(null)}
+          groupId={relevantGroupId}
+          onNavigateToSiblingStore={(dealership, vehicleId, board) => {
+            sessionStorage.setItem('ts-viewing-store', JSON.stringify(dealership));
+            setViewingAsManager(dealership);
+            setNavigateTarget({ vehicleId, board });
+          }}
         />
       ) : (
         <p className="p-4 text-signal-red text-sm">
