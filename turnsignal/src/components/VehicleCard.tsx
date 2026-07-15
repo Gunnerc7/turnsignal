@@ -424,16 +424,11 @@ export default function VehicleCard({
         </button>
       )}
 
-      {vehicle.board === 'loaners' && !vehicle.completed && canEditTitleStatus && (
-        <button
-          onClick={handleToggleCarryingCostTracking}
-          disabled={togglingCarryingCostTracking}
-          className={`mt-1.5 ml-7 w-[calc(100%-1.75rem)] text-xs font-medium rounded-lg py-1.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition disabled:opacity-60 ${
-            vehicle.loaner_track_carrying_cost ? 'bg-signal-amber/10 text-signal-amber' : 'bg-gray-50 text-steel'
-          }`}
-        >
-          💰 Carrying cost: {vehicle.loaner_track_carrying_cost ? 'On' : 'Off'}
-        </button>
+      {vehicle.board === 'loaners' && !vehicle.completed && vehicle.loaner_return_date && (
+        <p className={`mt-1.5 ml-7 text-sm font-semibold ${overdueLoaner ? 'text-signal-red' : 'text-ink'}`}>
+          {overdueLoaner ? '⚠ Overdue — was due ' : '📅 Due back '}
+          {new Date(vehicle.loaner_return_date).toLocaleDateString()}
+        </p>
       )}
 
       {vehicle.has_damage && (
@@ -531,6 +526,29 @@ export default function VehicleCard({
               <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3" />
               <path d="M8 4.5v7M6 10.2c0 .8.9 1.3 2 1.3s2-.6 2-1.4c0-1-.8-1.3-2-1.6-1.2-.3-2-.7-2-1.6 0-.8.9-1.4 2-1.4s2 .5 2 1.3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
               {vehicle.carrying_cost_excluded && (
+                <line x1="2.5" y1="13.5" x2="13.5" y2="2.5" stroke="currentColor" strokeWidth="1.3" />
+              )}
+            </svg>
+          </button>
+        )}
+
+        {canEditTitleStatus && vehicle.board === 'loaners' && !vehicle.completed && (
+          <button
+            onClick={handleToggleCarryingCostTracking}
+            disabled={togglingCarryingCostTracking}
+            aria-label={
+              vehicle.loaner_track_carrying_cost
+                ? 'Carrying cost is tracking for this loaner — tap to turn off'
+                : 'Turn on carrying cost tracking for this loaner'
+            }
+            className={`rounded-md px-2.5 disabled:opacity-60 ${
+              vehicle.loaner_track_carrying_cost ? 'bg-signal-amber/10 text-signal-amber' : 'bg-gray-50 text-steel'
+            }`}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M8 4.5v7M6 10.2c0 .8.9 1.3 2 1.3s2-.6 2-1.4c0-1-.8-1.3-2-1.6-1.2-.3-2-.7-2-1.6 0-.8.9-1.4 2-1.4s2 .5 2 1.3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+              {!vehicle.loaner_track_carrying_cost && (
                 <line x1="2.5" y1="13.5" x2="13.5" y2="2.5" stroke="currentColor" strokeWidth="1.3" />
               )}
             </svg>

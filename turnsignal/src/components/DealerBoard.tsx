@@ -359,7 +359,7 @@ export default function DealerBoard({
 
   const [liveFlash, setLiveFlash] = useState(false);
 
-  // Undo toast — Gmail-style, 30 second window. Only ever holds the single
+  // Undo toast — Gmail-style, 10 second window. Only ever holds the single
   // most recent move; a new move replaces whatever was pending, it
   // doesn't stack.
   const [undoState, setUndoState] = useState<{ snapshot: MoveUndoSnapshot; label: string } | null>(null);
@@ -368,7 +368,7 @@ export default function DealerBoard({
   const showUndoToast = useCallback((snapshot: MoveUndoSnapshot, destinationLabel: string) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setUndoState({ snapshot, label: destinationLabel });
-    undoTimerRef.current = setTimeout(() => setUndoState(null), 30000);
+    undoTimerRef.current = setTimeout(() => setUndoState(null), 10000);
   }, []);
 
   async function handleUndo() {

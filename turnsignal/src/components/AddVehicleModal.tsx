@@ -7,7 +7,7 @@ import { scanVin } from '../lib/vinOcr';
 import ModalCloseButton from './ModalCloseButton';
 import { suggestIsNew } from '../lib/dates';
 import { BoardConfig } from '../lib/boards';
-import { Vehicle } from '../lib/types';
+import { Vehicle, VehicleNote } from '../lib/types';
 import VinPhotoCapture from './VinPhotoCapture';
 
 export default function AddVehicleModal({
@@ -71,6 +71,73 @@ export default function AddVehicleModal({
   const [noteDraft, setNoteDraft] = useState('');
   const [noteDraftTaggedIds, setNoteDraftTaggedIds] = useState<string[]>([]);
   const [noteTagPickerOpen, setNoteTagPickerOpen] = useState(false);
+
+  // Editing an existing vehicle: real notes, fetched from the same table
+  // NotesModal reads from, added immediately (not staged) using the exact
+  // same insert pattern NotesModal already uses successfully — this is
+  // deliberately not a new implementation, just that same proven flow
+  // made reachable straight from the card itself instead of only through
+  // a separate Notes button.
+  const [existingNotes, setExistingNotes] = useState<VehicleNote[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [editNoteDraft, setEditNoteDraft] = useState('');
+  const [editNoteTaggedIds, setEditNoteTaggedIds] = useState<string[]>([]);
+  const [editNoteTagPickerOpen, setEditNoteTagPickerOpen] = useState(false);
+  const [savingEditNote, setSavingEditNote] = useState(false);
+
+  async function loadExistingNotes() {
+    if (!vehicle) return;
+    setLoadingNotes(true);
+    const { data } = await supabase
+      .from('vehicle_notes')
+      .select('*')
+      .eq('vehicle_id', vehicle.id)
+      .order('created_at', { ascending: false });
+    setExistingNotes(data ?? []);
+    setLoadingNotes(false);
+  }
+
+  useEffect(() => {
+    if (isEditing) loadExistingNotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicle?.id]);
+
+  async function handleAddNoteToExistingVehicle() {
+    if (!vehicle || !editNoteDraft.trim()) return;
+    setSavingEditNote(true);
+
+    const taggedMembers = members.filter((m) => editNoteTaggedIds.includes(m.id));
+    const { data: created } = await supabase
+      .from('vehicle_notes')
+      .insert({
+        vehicle_id: vehicle.id,
+        content: editNoteDraft.trim(),
+        author_email: session?.user.email ?? null,
+        author_name: userName,
+        tagged_user_ids: taggedMembers.map((m) => m.id),
+        tagged_user_names: taggedMembers.map((m) => m.label),
+      })
+      .select()
+      .single();
+
+    if (created && taggedMembers.length > 0) {
+      const preview = editNoteDraft.trim().length > 80 ? editNoteDraft.trim().slice(0, 80) + '…' : editNoteDraft.trim();
+      const label = `${vehicle.stock_number ? vehicle.stock_number + '-' : ''}${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
+      await supabase.from('notifications').insert(
+        taggedMembers.map((m) => ({
+          recipient_id: m.id,
+          dealership_id: dealershipId,
+          vehicle_id: vehicle.id,
+          message: `${userName ?? 'Someone'} tagged you on a note for ${label}: "${preview}"`,
+        }))
+      );
+    }
+
+    setSavingEditNote(false);
+    setEditNoteDraft('');
+    setEditNoteTaggedIds([]);
+    await loadExistingNotes();
+  }
   const [loanerReturnDate, setLoanerReturnDate] = useState(vehicle?.loaner_return_date?.slice(0, 10) ?? '');
   // Which board this vehicle is actually on (or heading to) — used to
   // decide whether the loaner-specific due date field is relevant at all.
@@ -294,6 +361,19 @@ export default function AddVehicleModal({
             `The vehicle was saved, but the notes couldn't be added: ${notesError.message}. You can add them from the Notes button on the card instead.`
           );
         } else {
+          // Confirms the notes are genuinely there, not just that the
+          // insert call returned without an error — if this ever comes
+          // back short, that's a specific, useful signal rather than a
+          // guess at what went wrong.
+          const { count } = await supabase
+            .from('vehicle_notes')
+            .select('id', { count: 'exact', head: true })
+            .eq('vehicle_id', created.id);
+          if ((count ?? 0) < noteRows.length) {
+            window.alert(
+              `The vehicle was saved, but only ${count ?? 0} of ${noteRows.length} note(s) actually saved. You can add the rest from the Notes button on the card.`
+            );
+          }
           const notificationRows: { recipient_id: string; dealership_id: string; vehicle_id: string; message: string }[] = [];
           pendingNotes.forEach((note) => {
             const taggedMembers = members.filter((m) => note.taggedIds.includes(m.id));
@@ -667,6 +747,129 @@ export default function AddVehicleModal({
                   className="text-signal-blue text-sm font-medium disabled:opacity-40"
                 >
                   + Add note
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isEditing && (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Notes</label>
+
+              {loadingNotes ? (
+                <p className="text-steel text-sm">Loading notes…</p>
+              ) : (
+                existingNotes.length > 0 && (
+                  <div className="space-y-1.5 mb-2 max-h-48 overflow-y-auto">
+                    {existingNotes.map((n) => (
+                      <div key={n.id} className="bg-asphalt rounded-lg px-3 py-2">
+                        <p className="text-sm text-ink whitespace-pre-wrap">{n.content}</p>
+                        {n.tagged_user_names && n.tagged_user_names.length > 0 && (
+                          <p className="text-[11px] text-signal-blue font-medium mt-0.5">
+                            🏷️ Tagged: {n.tagged_user_names.join(', ')}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-steel mt-0.5">
+                          {n.author_name ?? 'Someone'} · {new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+
+              <textarea
+                value={editNoteDraft}
+                onChange={(e) => setEditNoteDraft(e.target.value)}
+                placeholder="Add a note…"
+                rows={2}
+                className="w-full text-sm border border-gray-300 rounded-lg py-2 px-3 resize-none focus:outline-none focus:ring-2 focus:ring-signal-blue"
+              />
+
+              {editNoteTaggedIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {members
+                    .filter((m) => editNoteTaggedIds.includes(m.id))
+                    .map((m) => (
+                      <span
+                        key={m.id}
+                        className="text-xs bg-signal-blue/10 text-signal-blue font-medium rounded-full pl-2.5 pr-1.5 py-1 flex items-center gap-1"
+                      >
+                        {m.label}
+                        <button
+                          onClick={() => setEditNoteTaggedIds((prev) => prev.filter((id) => id !== m.id))}
+                          aria-label={`Remove ${m.label}`}
+                          className="text-signal-blue"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                </div>
+              )}
+
+              <div className="relative mt-2 flex items-center justify-between">
+                <div className="relative">
+                  <button
+                    onClick={() => setEditNoteTagPickerOpen((o) => !o)}
+                    className="text-xs text-steel font-medium flex items-center gap-1 py-1"
+                  >
+                    🏷️ {editNoteTaggedIds.length > 0 ? `${editNoteTaggedIds.length} tagged` : 'Tag people'}
+                  </button>
+
+                  {editNoteTagPickerOpen && (
+                    <>
+                      <button
+                        className="fixed inset-0 z-40 cursor-default"
+                        aria-label="Close tag picker"
+                        onClick={() => setEditNoteTagPickerOpen(false)}
+                      />
+                      <div className="absolute left-0 bottom-full mb-1 bg-white rounded-lg shadow-lift border border-gray-200 w-56 max-h-56 overflow-y-auto z-50">
+                        {members.length === 0 ? (
+                          <p className="text-steel text-xs p-3">No other team members yet.</p>
+                        ) : (
+                          members.map((m) => (
+                            <button
+                              key={m.id}
+                              onClick={() =>
+                                setEditNoteTaggedIds((prev) =>
+                                  prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id]
+                                )
+                              }
+                              className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm hover:bg-asphalt"
+                            >
+                              <span
+                                className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
+                                  editNoteTaggedIds.includes(m.id) ? 'bg-signal-blue border-signal-blue' : 'border-gray-300'
+                                }`}
+                              >
+                                {editNoteTaggedIds.includes(m.id) && (
+                                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                                    <path
+                                      d="M3 8.5L6.5 12L13 4"
+                                      stroke="white"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                )}
+                              </span>
+                              <span className="text-ink truncate">{m.label}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleAddNoteToExistingVehicle}
+                  disabled={!editNoteDraft.trim() || savingEditNote}
+                  className="text-signal-blue text-sm font-medium disabled:opacity-40"
+                >
+                  {savingEditNote ? 'Adding…' : '+ Add note'}
                 </button>
               </div>
             </div>

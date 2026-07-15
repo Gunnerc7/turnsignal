@@ -142,6 +142,28 @@ export default function StageTimelineModal({
     }
   }
 
+  // recon_started_at is what actually drives the carrying-cost clock for
+  // new vehicles — it's set the moment a vehicle first leaves Inbound,
+  // but it's a separate field on the vehicle itself, not something
+  // deleting or editing a history row touches automatically. Without
+  // this, deleting an erroneous "moved to the wrong stage" entry removes
+  // the history row but leaves the clock it started running regardless —
+  // exactly the case where a vehicle briefly, incorrectly touched
+  // Service and got moved right back. This recomputes it from whatever
+  // history genuinely remains: the earliest non-Inbound entry, or null
+  // if the vehicle's real corrected history never actually left Inbound.
+  async function recalculateReconStartedAt() {
+    const { data } = await supabase
+      .from('stage_history')
+      .select('entered_at')
+      .eq('vehicle_id', vehicleId)
+      .neq('stage', 'inbound_trade_in')
+      .order('entered_at', { ascending: true })
+      .limit(1);
+    const correctReconStartedAt = data && data.length > 0 ? data[0].entered_at : null;
+    await supabase.from('vehicles').update({ recon_started_at: correctReconStartedAt }).eq('id', vehicleId);
+  }
+
   async function handleSaveEdit(row: StageHistoryRow) {
     setError(null);
     const newEnteredAt = new Date(editEnteredAt).toISOString();
@@ -165,6 +187,9 @@ export default function StageTimelineModal({
     // card and this timeline can never quietly disagree.
     if (!updateError && isOpenRow) {
       await supabase.from('vehicles').update({ stage_entered_at: newEnteredAt }).eq('id', vehicleId);
+    }
+    if (!updateError) {
+      await recalculateReconStartedAt();
     }
 
     setSaving(false);
@@ -190,6 +215,9 @@ export default function StageTimelineModal({
     setSaving(true);
     await logEdit(row, 'delete', null, null);
     const { error: deleteError } = await supabase.from('stage_history').delete().eq('id', row.id);
+    if (!deleteError) {
+      await recalculateReconStartedAt();
+    }
     setSaving(false);
 
     if (deleteError) {
