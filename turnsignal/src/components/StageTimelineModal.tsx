@@ -257,7 +257,7 @@ export default function StageTimelineModal({
 
               {error && <p className="text-signal-red text-xs mb-2">{error}</p>}
 
-              {rows.map((row) => (
+              {rows.map((row, index) => (
                 <div key={row.id} className="bg-asphalt rounded-lg px-3 py-2">
                   {editingRowId === row.id ? (
                     <div className="space-y-2">
@@ -303,6 +303,11 @@ export default function StageTimelineModal({
                           {formatTimestamp(row.entered_at)}
                           {row.exited_at ? ` – ${formatTimestamp(row.exited_at)}` : ' – now'}
                         </p>
+                        {row.moved_by_name && (
+                          <p className="text-[11px] text-steel">
+                            {index === 0 ? 'Added' : 'Moved'} by {row.moved_by_name}
+                          </p>
+                        )}
                         {canEdit && (
                           <div className="flex gap-3 mt-1">
                             <button onClick={() => startEdit(row)} className="text-[11px] text-signal-blue font-medium">

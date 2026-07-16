@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { scanVin } from '../lib/vinOcr';
 import { moveVehicleToStage } from '../lib/moveVehicle';
+import { useAuth } from '../lib/AuthContext';
 import { BoardConfig } from '../lib/boards';
 import { Vehicle } from '../lib/types';
 import VinPhotoCapture from './VinPhotoCapture';
@@ -37,6 +38,7 @@ export default function ScanToMoveModal({
   onMoved: () => void;
   onNotFound: (vin: string) => void;
 }) {
+  const { session, userName } = useAuth();
   const [cameraOpen, setCameraOpen] = useState(true);
   const [phase, setPhase] = useState<'looking' | 'found' | 'confirm' | 'error'>('looking');
   const [matchedVehicle, setMatchedVehicle] = useState<Vehicle | null>(null);
@@ -96,7 +98,7 @@ export default function ScanToMoveModal({
   async function handleMove(boardKey: string, stageKey: string) {
     if (!matchedVehicle) return;
     setMoving(`${boardKey}::${stageKey}`);
-    await moveVehicleToStage(matchedVehicle.id, boardKey, stageKey);
+    await moveVehicleToStage(matchedVehicle.id, boardKey, stageKey, session?.user.id ?? null, userName);
     setMoving(null);
     onMoved();
     onClose();

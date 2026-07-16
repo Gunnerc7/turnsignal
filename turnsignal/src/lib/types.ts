@@ -66,6 +66,8 @@ export type StageHistoryRow = {
   stage: string;
   entered_at: string;
   exited_at: string | null;
+  moved_by_id: string | null;
+  moved_by_name: string | null;
 };
 
 export type NewVehicleInput = {

@@ -144,7 +144,7 @@ export default function VehicleCard({
     if (!newBoard || !newStage) return;
     if (newBoard === vehicle.board && newStage === vehicle.stage) return;
     setMoving(true);
-    const { undo } = await moveVehicleToStage(vehicle.id, newBoard, newStage);
+    const { undo } = await moveVehicleToStage(vehicle.id, newBoard, newStage, session?.user.id ?? null, userName);
     setMoving(false);
     if (undo && onMoveWithUndo) {
       const b = boards.find((bd) => bd.key === newBoard);

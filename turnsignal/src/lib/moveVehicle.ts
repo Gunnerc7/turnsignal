@@ -13,7 +13,13 @@ export type MoveUndoSnapshot = {
   newHistoryRowId: string | null;
 };
 
-export async function moveVehicleToStage(vehicleId: string, newBoard: string, newStage: string) {
+export async function moveVehicleToStage(
+  vehicleId: string,
+  newBoard: string,
+  newStage: string,
+  movedById: string | null = null,
+  movedByName: string | null = null
+) {
   // Capture everything about "before" up front — this is what undo
   // restores from, so it has to be read before anything changes.
   const { data: openHistoryRow } = await supabase
@@ -41,7 +47,14 @@ export async function moveVehicleToStage(vehicleId: string, newBoard: string, ne
 
   const { data: newHistoryRow } = await supabase
     .from('stage_history')
-    .insert({ vehicle_id: vehicleId, board: newBoard, stage: newStage, entered_at: now })
+    .insert({
+      vehicle_id: vehicleId,
+      board: newBoard,
+      stage: newStage,
+      entered_at: now,
+      moved_by_id: movedById,
+      moved_by_name: movedByName,
+    })
     .select('id')
     .single();
 

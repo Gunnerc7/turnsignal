@@ -11,6 +11,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../lib/AuthContext';
 import { moveVehicleToStage, reorderWithinStage, undoMove, MoveUndoSnapshot } from '../lib/moveVehicle';
 import { BoardConfig, fetchBoards, getBoard } from '../lib/boards';
 import { Vehicle } from '../lib/types';
@@ -49,6 +50,7 @@ export default function DealerBoard({
 }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [photoCounts, setPhotoCounts] = useState<Map<string, number>>(new Map());
+  const { session, userName } = useAuth();
   // Personal, board-wide toggle — not a dealership setting, so it's kept
   // in sessionStorage per-browser like other UI-only preferences (active
   // board tab, draft form state) rather than the database.
@@ -549,7 +551,7 @@ export default function DealerBoard({
     ];
 
     if (originStage && originStage !== destinationStage) {
-      const { undo } = await moveVehicleToStage(activeId, activeVehicle.board, destinationStage);
+      const { undo } = await moveVehicleToStage(activeId, activeVehicle.board, destinationStage, session?.user.id ?? null, userName);
       if (undo) showUndoToast(undo, locationLabelFor(activeVehicle));
     }
     await reorderWithinStage(newOrderIds);

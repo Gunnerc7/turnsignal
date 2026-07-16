@@ -61,6 +61,8 @@ export async function createVehicle(fields: NewVehicleFields) {
       board: fields.board,
       stage: fields.stage,
       entered_at: now,
+      moved_by_id: fields.createdById,
+      moved_by_name: fields.createdByName,
     });
   }
 
