@@ -18,7 +18,7 @@ export default function Pricing() {
         <div className="max-w-sm mx-auto bg-ink rounded-2xl p-8 text-center">
           <p className="text-mist text-sm mb-1">Per store, per month</p>
           <p className="font-display text-5xl font-bold text-white mb-1">
-            $149<span className="text-xl font-medium text-mist">/mo</span>
+            $249<span className="text-xl font-medium text-mist">/mo</span>
           </p>
           <p className="text-mist text-xs mb-6">No contract — cancel anytime.</p>
           <a

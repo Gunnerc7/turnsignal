@@ -146,6 +146,7 @@ export default function AnalyticsPage({
   const [range, setRange] = useState<RangeKey>('month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [activeTab, setActiveTab] = useState<'overview' | 'reports'>('overview');
 
   const load = useCallback(
     async (isInitial: boolean) => {
@@ -375,7 +376,7 @@ export default function AnalyticsPage({
         // Matches the same exception carryingCostSoFar itself applies —
         // a Loaners-board vehicle still waiting on title genuinely has a
         // real carrying cost and shouldn't be skipped from the average.
-        if (v.board === 'loaners' && v.title_status !== 'waiting') return;
+        if (v.board === 'loaners' && !v.loaner_track_carrying_cost) return;
         if (v.is_new) { newCostSum += cost; newCostCount += 1; }
         else { usedCostSum += cost; usedCostCount += 1; }
       });
@@ -415,7 +416,7 @@ export default function AnalyticsPage({
     // been sitting since before the period only counts the portion of
     // time that actually fell inside it.
     const periodCarryingCost = vehicles
-      .filter((v) => v.board !== 'loaners' || v.title_status === 'waiting')
+      .filter((v) => !v.carrying_cost_excluded && (v.board !== 'loaners' || v.loaner_track_carrying_cost))
       .reduce((sum, v) => {
         const startDate = v.is_new ? v.recon_started_at : v.created_at;
         if (!startDate) return sum;
@@ -478,7 +479,7 @@ export default function AnalyticsPage({
     // already on the lot, not stuck in recon — UNLESS one is still
     // waiting on title, since that's a real, live priority either way.
     const priorityResults = computePriorityScores(
-      vehicles.filter((v) => !v.completed && (v.board !== 'loaners' || v.title_status === 'waiting')),
+      vehicles.filter((v) => !v.completed && (v.board !== 'loaners' || v.loaner_track_carrying_cost)),
       yellowDays,
       redDays,
       newRatePerDay,
@@ -652,7 +653,7 @@ export default function AnalyticsPage({
     let previousPeriodCarryingCost: number | null = null;
     if (previousBounds) {
       previousPeriodCarryingCost = vehicles
-        .filter((v) => v.board !== 'loaners' || v.title_status === 'waiting')
+        .filter((v) => !v.carrying_cost_excluded && (v.board !== 'loaners' || v.loaner_track_carrying_cost))
         .reduce((sum, v) => {
           const startDate = v.is_new ? v.recon_started_at : v.created_at;
           if (!startDate) return sum;
@@ -667,6 +668,35 @@ export default function AnalyticsPage({
     }
     const carryingCostChangeVsPrevious =
       previousPeriodCarryingCost !== null ? periodCarryingCost - previousPeriodCarryingCost : null;
+
+    // ── What's Working ───────────────────────────────────────────────────
+    // Answers "what can I show the owner" — deliberately built from
+    // numbers already computed above, nothing new calculated here, same
+    // reasoning as the old Executive Summary. Only ever states real,
+    // verifiable facts about the selected period; no causal claim about
+    // WHY something improved, just that it did.
+    const whatsWorking: { emoji: string; text: string }[] = [];
+    if (turnTimes.length > 0) {
+      whatsWorking.push({
+        emoji: '✅',
+        text: `${turnTimes.length} vehicle${turnTimes.length === 1 ? '' : 's'} completed this period.`,
+      });
+    }
+    if (avgTurnTime !== null && previousAvgTurnTime !== null) {
+      const delta = previousAvgTurnTime - avgTurnTime;
+      if (delta > 0.1) {
+        whatsWorking.push({
+          emoji: '✅',
+          text: `Turn rate improved ${delta.toFixed(1)} days vs. the previous period (${avgTurnTime.toFixed(1)} days now).`,
+        });
+      }
+    }
+    if (carryingCostChangeVsPrevious !== null && carryingCostChangeVsPrevious < -1) {
+      whatsWorking.push({
+        emoji: '✅',
+        text: `$${Math.abs(carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 })} less spent on carrying cost vs. the previous period.`,
+      });
+    }
 
     // ── Opportunity Meter ────────────────────────────────────────────────
     // Not a savings promise — a plain, rule-based estimate of how much of
@@ -745,6 +775,7 @@ export default function AnalyticsPage({
       targetCarryingCost,
       costByStage,
       waitingOnTitleCount,
+      whatsWorking,
       weeklyTrend,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1052,363 +1083,370 @@ ${stats.todaysPriorities.length > 0 ? `
       {loading ? (
         <p className="text-steel text-sm p-4">Loading…</p>
       ) : (
-        <div className="flex-1 overflow-y-auto p-4 space-y-5">
-          {/* Time-sensitive callouts only — nothing permanent lives here,
-              so this stays empty (and invisible) most of the time. */}
-          {stats.waitingOnTitleCount > 0 && (
-            <div className="flex items-center gap-2 bg-signal-amber/10 border border-signal-amber/30 rounded-xl px-3 py-2.5">
-              <span className="text-base">🟡</span>
-              <p className="text-sm text-ink">
-                {stats.waitingOnTitleCount} vehicle{stats.waitingOnTitleCount === 1 ? ' is' : 's are'} waiting on
-                title — follow up on paperwork.
-              </p>
+        <>
+          <div className="flex-shrink-0 bg-white border-b border-gray-200">
+            <div className="flex px-4 gap-5">
+              {(['overview', 'reports'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`py-2.5 text-sm font-display font-semibold border-b-2 transition-colors ${
+                    activeTab === tab ? 'border-signal-blue text-ink' : 'border-transparent text-steel'
+                  }`}
+                >
+                  {tab === 'overview' ? 'Overview' : 'Reports'}
+                </button>
+              ))}
             </div>
-          )}
-          {stats.carryingCostChangeVsPrevious !== null && stats.carryingCostChangeVsPrevious > 0 && (
-            <div className="flex items-center gap-2 bg-signal-red/10 border border-signal-red/30 rounded-xl px-3 py-2.5">
-              <span className="text-base">🔴</span>
-              <p className="text-sm text-ink">
-                Carrying cost is up $
-                {stats.carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the
-                previous period.
-              </p>
-            </div>
-          )}
-
-          {/* The single biggest, most prominent thing on the page — not
-              an equal peer to the tiles below it. This is deliberately
-              not the same size as everything else: it's the one thing
-              worth seeing before anything else. */}
-          {stats.todaysPriorities.length > 0 ? (
-            <button
-              onClick={() => setPrioritiesModalOpen(true)}
-              className="w-full text-left bg-ink rounded-2xl p-5 active:scale-[0.99] transition"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs text-mist uppercase tracking-wide">🚩 Today's Priorities</p>
-                <span className="text-mist text-xs">Tap to view all →</span>
-              </div>
-              <p className="font-display text-4xl font-bold text-white leading-none mb-2">
-                {stats.todaysPriorities.length}
-              </p>
-              <p className="text-sm text-mist truncate">
-                Top: {vehicleShortLabel(stats.todaysPriorities[0].vehicle)} — score{' '}
-                {stats.todaysPriorities[0].score}
-              </p>
-            </button>
-          ) : (
-            <div className="w-full bg-signal-green/10 border border-signal-green/30 rounded-2xl p-5">
-              <p className="text-sm text-ink font-medium">🟢 Nothing needs immediate attention right now.</p>
-            </div>
-          )}
-
-          {/* Pipeline strip — the shape of where things back up, at a
-              glance, without repeating any of Stage Health's numbers. */}
-          {mainBoardForDisplay && (
-            <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">
-              {mainBoardForDisplay.stages.map((s, i) => {
-                const health = stats.stageHealth.find((h) => h.key === s.key);
-                const dotColor =
-                  s.key === 'inbound_trade_in'
-                    ? 'bg-gray-300'
-                    : health?.indicator === 'green'
-                    ? 'bg-signal-green'
-                    : health?.indicator === 'yellow'
-                    ? 'bg-signal-amber'
-                    : health?.indicator === 'red'
-                    ? 'bg-signal-red'
-                    : 'bg-gray-300';
-                return (
-                  <div key={s.key} className="flex items-center flex-1 last:flex-none">
-                    <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                      <span className={`w-3 h-3 rounded-full ${dotColor}`} />
-                      <span className="text-[9px] text-steel text-center leading-tight max-w-[52px]">{s.label}</span>
-                    </div>
-                    {i < mainBoardForDisplay.stages.length - 1 && <div className="h-px bg-gray-200 flex-1 mx-1" />}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Secondary row — real, but deliberately smaller than the
-              priorities card above. Carrying Cost now carries the
-              Opportunity figure as context, rather than a separate tile
-              competing for the same attention. */}
-          <div className="grid grid-cols-2 gap-3">
-            <OverviewTile
-              icon="⏱️"
-              accent="blue"
-              value={formatDays(stats.avgTurnTime)}
-              label="Turn Rate"
-              trend={
-                stats.previousAvgTurnTime !== null && stats.avgTurnTime !== null
-                  ? {
-                      direction: stats.previousAvgTurnTime - stats.avgTurnTime > 0 ? 'up' : 'down',
-                      good: stats.previousAvgTurnTime - stats.avgTurnTime > 0,
-                      label:
-                        Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime) < 0.1
-                          ? 'Steady'
-                          : `${Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime).toFixed(1)}d vs. last period`,
-                    }
-                  : undefined
-              }
-            />
-            <OverviewTile
-              icon="💰"
-              accent="amber"
-              value={`$${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
-              label="Carrying Cost"
-              sublabel={
-                stats.opportunityAmount > 1
-                  ? `~$${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} avoidable if on target`
-                  : undefined
-              }
-            />
           </div>
 
-          {/* Board Watch — deliberately narrow. Stage Health already owns
-              Main Board, so this only ever shows what nothing else on the
-              page can see: sidebar boards, and title status stuck long
-              enough to be worth double-checking. Empty most of the time
-              on purpose. */}
-          {stats.boardWatchItems.length > 0 && (
-            <div>
-              <h2 className="font-display font-semibold text-ink text-sm mb-2">Board Watch</h2>
-              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                {stats.boardWatchItems.map((item, i) => (
+          {activeTab === 'overview' ? (
+            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+              {/* Time-sensitive callouts only — nothing permanent lives here,
+                  so this stays empty (and invisible) most of the time. */}
+              {stats.waitingOnTitleCount > 0 && (
+                <div className="flex items-center gap-2 bg-signal-amber/10 border border-signal-amber/30 rounded-xl px-3 py-2.5">
+                  <span className="text-base">🟡</span>
+                  <p className="text-sm text-ink">
+                    {stats.waitingOnTitleCount} vehicle{stats.waitingOnTitleCount === 1 ? ' is' : 's are'} waiting on
+                    title — follow up on paperwork.
+                  </p>
+                </div>
+              )}
+              {stats.carryingCostChangeVsPrevious !== null && stats.carryingCostChangeVsPrevious > 0 && (
+                <div className="flex items-center gap-2 bg-signal-red/10 border border-signal-red/30 rounded-xl px-3 py-2.5">
+                  <span className="text-base">🔴</span>
+                  <p className="text-sm text-ink">
+                    Carrying cost is up $
+                    {stats.carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the
+                    previous period.
+                  </p>
+                </div>
+              )}
+
+              {/* Question 1: What should I focus on today? — the single
+                  biggest, most prominent thing on the page. */}
+              <div>
+                <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
+                  What should I focus on today?
+                </p>
+                {stats.todaysPriorities.length > 0 ? (
                   <button
-                    key={i}
-                    onClick={() => onNavigateToVehicle?.(item.vehicleId, item.board)}
-                    disabled={!onNavigateToVehicle}
-                    className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
+                    onClick={() => setPrioritiesModalOpen(true)}
+                    className="w-full text-left bg-ink rounded-2xl p-5 active:scale-[0.99] transition"
                   >
-                    <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
-                    <p className="text-sm text-ink leading-snug">{item.text}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <CompletionsTrendChart data={stats.weeklyTrend} />
-
-          {stats.stageHealth.length > 0 && (
-            <div>
-              <h2 className="font-display font-semibold text-ink text-sm mb-2">Stage Health — Main Board</h2>
-              <div className="space-y-2">
-                {stats.stageHealth.map((s) => (
-                  <div key={s.key} className="border border-gray-200 rounded-lg p-3">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                            s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
-                          }`}
-                        />
-                        <p className="font-display font-semibold text-ink truncate">{s.label}</p>
-                      </div>
-                      <span className="font-display font-bold text-ink tabular flex-shrink-0">{s.health}</span>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs text-mist uppercase tracking-wide">🚩 Today's Priorities</p>
+                      <span className="text-mist text-xs">Tap to view all →</span>
                     </div>
-                    <p className="text-xs text-steel tabular">
-                      {formatDays(s.avgDays)} average, active now · {s.waitingCount} waiting
+                    <p className="font-display text-4xl font-bold text-white leading-none mb-2">
+                      {stats.todaysPriorities.length}
                     </p>
-                    {(s.approachingCount > 0 || s.exceedingCount > 0) && (
-                      <p className="text-xs tabular mt-0.5">
-                        {s.approachingCount > 0 && (
-                          <span className="text-signal-amber font-medium">
-                            {s.approachingCount} approaching target
-                          </span>
-                        )}
-                        {s.approachingCount > 0 && s.exceedingCount > 0 && <span className="text-steel"> · </span>}
-                        {s.exceedingCount > 0 && (
-                          <span className="text-signal-red font-medium">{s.exceedingCount} over target</span>
-                        )}
-                      </p>
-                    )}
-                    <p className="text-xs text-steel mt-1">{s.recommendation}</p>
+                    <p className="text-sm text-mist truncate">
+                      Top: {vehicleShortLabel(stats.todaysPriorities[0].vehicle)} — score{' '}
+                      {stats.todaysPriorities[0].score}
+                    </p>
+                  </button>
+                ) : (
+                  <div className="w-full bg-signal-green/10 border border-signal-green/30 rounded-2xl p-5">
+                    <p className="text-sm text-ink font-medium">🟢 Nothing needs immediate attention right now.</p>
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          )}
 
-          {stats.costByStage.length > 0 && (
-            <div>
-              <h2 className="font-display font-semibold text-ink text-sm mb-2">Cost by Stage</h2>
-              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                {stats.costByStage.map((s) => (
-                  <div key={s.label} className="flex items-center justify-between px-3 py-2.5">
-                    <span className="text-sm text-ink">{s.label}</span>
-                    <span className="text-sm font-semibold text-ink tabular">
-                      ${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </span>
+              {/* Question 2: Where can we save money? — Carrying Cost and
+                  Cost by Stage sit together here since they're both
+                  answering the same question, instead of Cost by Stage
+                  being buried much further down the page. */}
+              <div>
+                <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
+                  Where can we save money?
+                </p>
+                <div className="grid grid-cols-2 gap-3 mb-2">
+                  <OverviewTile
+                    icon="⏱️"
+                    accent="blue"
+                    value={formatDays(stats.avgTurnTime)}
+                    label="Turn Rate"
+                    trend={
+                      stats.previousAvgTurnTime !== null && stats.avgTurnTime !== null
+                        ? {
+                            direction: stats.previousAvgTurnTime - stats.avgTurnTime > 0 ? 'up' : 'down',
+                            good: stats.previousAvgTurnTime - stats.avgTurnTime > 0,
+                            label:
+                              Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime) < 0.1
+                                ? 'Steady'
+                                : `${Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime).toFixed(1)}d vs. last period`,
+                          }
+                        : undefined
+                    }
+                  />
+                  <OverviewTile
+                    icon="💰"
+                    accent="amber"
+                    value={`$${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                    label="Carrying Cost"
+                    sublabel={
+                      stats.opportunityAmount > 1
+                        ? `~$${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} avoidable if on target`
+                        : undefined
+                    }
+                  />
+                </div>
+                {stats.costByStage.length > 0 && (
+                  <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                    {stats.costByStage.map((s) => (
+                      <div key={s.label} className="flex items-center justify-between px-3 py-2.5">
+                        <span className="text-sm text-ink">{s.label}</span>
+                        <span className="text-sm font-semibold text-ink tabular">
+                          ${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          )}
 
-          {/* Everything below this line is the detailed report tier —
-              same data that's always been here, just clearly separated
-              from the glance layer above instead of blending into one
-              long scroll. */}
-          <div className="flex items-center gap-3 pt-1">
-            <div className="h-px bg-gray-200 flex-1" />
-            <p className="text-[11px] text-steel uppercase tracking-wider font-semibold">Full Report</p>
-            <div className="h-px bg-gray-200 flex-1" />
-          </div>
+              {/* Pipeline strip — the shape of where things back up, at a
+                  glance, without repeating any of Stage Health's numbers. */}
+              {mainBoardForDisplay && (
+                <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                  {mainBoardForDisplay.stages.map((s, i) => {
+                    const health = stats.stageHealth.find((h) => h.key === s.key);
+                    const dotColor =
+                      s.key === 'inbound_trade_in'
+                        ? 'bg-gray-300'
+                        : health?.indicator === 'green'
+                        ? 'bg-signal-green'
+                        : health?.indicator === 'yellow'
+                        ? 'bg-signal-amber'
+                        : health?.indicator === 'red'
+                        ? 'bg-signal-red'
+                        : 'bg-gray-300';
+                    return (
+                      <div key={s.key} className="flex items-center flex-1 last:flex-none">
+                        <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                          <span className={`w-3 h-3 rounded-full ${dotColor}`} />
+                          <span className="text-[9px] text-steel text-center leading-tight max-w-[52px]">{s.label}</span>
+                        </div>
+                        {i < mainBoardForDisplay.stages.length - 1 && <div className="h-px bg-gray-200 flex-1 mx-1" />}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
-          <div className="bg-ink rounded-xl p-5 text-white">
-            <p className="text-xs text-mist uppercase tracking-wide mb-1">Turn Rate (Service → Price for Lot)</p>
-            <p className="font-display text-3xl font-bold">{formatDays(stats.avgTurnTime)}</p>
-            <div className="flex gap-4 mt-2 text-xs text-mist">
-              <span>Fastest: {formatDays(stats.fastestTurn)}</span>
-              <span>Slowest: {formatDays(stats.slowestTurn)}</span>
-            </div>
-            <div className="mt-3 pt-3 border-t border-white/10">
-              <p className="text-xs text-mist uppercase tracking-wide mb-1">Avg. Transit Time (Inbound → Service)</p>
-              <p className="font-display text-xl font-semibold">{formatDays(stats.avgTransitTime)}</p>
-            </div>
-          </div>
+              {/* Board Watch — deliberately narrow. Stage Health already owns
+                  Main Board, so this only ever shows what nothing else on the
+                  page can see: sidebar boards, and title status stuck long
+                  enough to be worth double-checking. Empty most of the time
+                  on purpose. */}
+              {stats.boardWatchItems.length > 0 && (
+                <div>
+                  <h2 className="font-display font-semibold text-ink text-sm mb-2">Board Watch</h2>
+                  <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                    {stats.boardWatchItems.map((item, i) => (
+                      <button
+                        key={i}
+                        onClick={() => onNavigateToVehicle?.(item.vehicleId, item.board)}
+                        disabled={!onNavigateToVehicle}
+                        className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
+                      >
+                        <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
+                        <p className="text-sm text-ink leading-snug">{item.text}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-asphalt rounded-lg p-3">
-              <p className="text-2xl font-display font-bold text-ink tabular">{stats.mainBoardActive}</p>
-              <p className="text-xs text-steel">Active on Main Board</p>
-            </div>
-            <div className="bg-asphalt rounded-lg p-3">
-              <p className="text-2xl font-display font-bold text-ink tabular">{stats.addedInRange}</p>
-              <p className="text-xs text-steel">Added in this period</p>
-            </div>
-            <div className="bg-asphalt rounded-lg p-3">
-              <p className="text-2xl font-display font-bold text-ink tabular">{stats.completedInRange}</p>
-              <p className="text-xs text-steel">Completed in this period</p>
-            </div>
-            <div className="bg-asphalt rounded-lg p-3">
-              <p
-                className={`text-2xl font-display font-bold tabular ${stats.agingRedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
+              {/* Question 3: What can I show the owner? — plain, verifiable
+                  facts about the selected period, nothing new calculated,
+                  no causal claim beyond what actually happened. */}
+              {stats.whatsWorking.length > 0 && (
+                <div>
+                  <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
+                    What can I show the owner?
+                  </p>
+                  <div className="bg-signal-green/5 border border-signal-green/20 rounded-lg divide-y divide-signal-green/10">
+                    {stats.whatsWorking.map((item, i) => (
+                      <div key={i} className="flex items-start gap-2.5 px-3 py-2.5">
+                        <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
+                        <p className="text-sm text-ink leading-snug">{item.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <CompletionsTrendChart data={stats.weeklyTrend} />
+
+              <button
+                onClick={() => setActiveTab('reports')}
+                className="w-full text-center text-sm text-signal-blue font-medium py-2"
               >
-                {stats.agingRedCount}
-              </p>
-              <p className="text-xs text-steel">Aging red right now</p>
+                See the full stage-by-stage report →
+              </button>
             </div>
-            <div className="bg-asphalt rounded-lg p-3">
-              <p
-                className={`text-2xl font-display font-bold tabular ${stats.damagedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
-              >
-                {stats.damagedCount}
-              </p>
-              <p className="text-xs text-steel">
-                Flagged with damage{stats.damageRate !== null && ` (${stats.damageRate.toFixed(0)}%)`}
-              </p>
-            </div>
-            <div className="bg-asphalt rounded-lg p-3">
-              <p
-                className={`text-2xl font-display font-bold tabular ${stats.overdueLoaners > 0 ? 'text-signal-red' : 'text-ink'}`}
-              >
-                {stats.overdueLoaners}
-              </p>
-              <p className="text-xs text-steel">Loaners overdue</p>
-            </div>
-          </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+              {stats.stageHealth.length > 0 && (
+                <div>
+                  <h2 className="font-display font-semibold text-ink text-sm mb-2">Stage Health — Main Board</h2>
+                  <div className="space-y-2">
+                    {stats.stageHealth.map((s) => (
+                      <div key={s.key} className="border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                                s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
+                              }`}
+                            />
+                            <p className="font-display font-semibold text-ink truncate">{s.label}</p>
+                          </div>
+                          <span className="font-display font-bold text-ink tabular flex-shrink-0">{s.health}</span>
+                        </div>
+                        <p className="text-xs text-steel tabular">
+                          {formatDays(s.avgDays)} average, active now · {s.waitingCount} waiting
+                        </p>
+                        {(s.approachingCount > 0 || s.exceedingCount > 0) && (
+                          <p className="text-xs tabular mt-0.5">
+                            {s.approachingCount > 0 && (
+                              <span className="text-signal-amber font-medium">
+                                {s.approachingCount} approaching target
+                              </span>
+                            )}
+                            {s.approachingCount > 0 && s.exceedingCount > 0 && <span className="text-steel"> · </span>}
+                            {s.exceedingCount > 0 && (
+                              <span className="text-signal-red font-medium">{s.exceedingCount} over target</span>
+                            )}
+                          </p>
+                        )}
+                        <p className="text-xs text-steel mt-1">{s.recommendation}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-asphalt rounded-lg p-3">
-              <p className="text-2xl font-display font-bold text-ink tabular">
-                ${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </p>
-              <p className="text-xs text-steel">Total carrying cost right now</p>
-            </div>
-            <div className="bg-asphalt rounded-lg p-3">
-              {stats.carryingCostChangeVsPrevious !== null ? (
-                <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-asphalt rounded-lg p-3">
+                  <p className="text-2xl font-display font-bold text-ink tabular">{stats.mainBoardActive}</p>
+                  <p className="text-xs text-steel">Active on Main Board</p>
+                </div>
+                <div className="bg-asphalt rounded-lg p-3">
+                  <p className="text-2xl font-display font-bold text-ink tabular">{stats.addedInRange}</p>
+                  <p className="text-xs text-steel">Added in this period</p>
+                </div>
+                <div className="bg-asphalt rounded-lg p-3">
+                  <p className="text-2xl font-display font-bold text-ink tabular">{stats.completedInRange}</p>
+                  <p className="text-xs text-steel">Completed in this period</p>
+                </div>
+                <div className="bg-asphalt rounded-lg p-3">
                   <p
-                    className={`text-2xl font-display font-bold tabular ${
-                      stats.carryingCostChangeVsPrevious <= 0 ? 'text-signal-green' : 'text-signal-red'
-                    }`}
+                    className={`text-2xl font-display font-bold tabular ${stats.agingRedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
                   >
-                    {stats.carryingCostChangeVsPrevious <= 0 ? '−' : '+'}$
-                    {Math.abs(stats.carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {stats.agingRedCount}
+                  </p>
+                  <p className="text-xs text-steel">Aging red right now</p>
+                </div>
+                <div className="bg-asphalt rounded-lg p-3">
+                  <p
+                    className={`text-2xl font-display font-bold tabular ${stats.damagedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
+                  >
+                    {stats.damagedCount}
                   </p>
                   <p className="text-xs text-steel">
-                    {stats.carryingCostChangeVsPrevious <= 0 ? 'Avoided' : 'Added'} vs. previous period
+                    Flagged with damage{stats.damageRate !== null && ` (${stats.damageRate.toFixed(0)}%)`}
                   </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-2xl font-display font-bold text-gray-300">—</p>
-                  <p className="text-xs text-steel">Not enough history yet vs. previous period</p>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-asphalt rounded-lg p-3">
-              <p className="text-2xl font-display font-bold text-ink tabular">
-                {stats.avgNewCarryingCost !== null
-                  ? `$${stats.avgNewCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                  : '—'}
-              </p>
-              <p className="text-xs text-steel">Avg. cost — new vehicles</p>
-            </div>
-            <div className="bg-asphalt rounded-lg p-3">
-              <p className="text-2xl font-display font-bold text-ink tabular">
-                {stats.avgUsedCarryingCost !== null
-                  ? `$${stats.avgUsedCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                  : '—'}
-              </p>
-              <p className="text-xs text-steel">Avg. cost — used vehicles</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="border border-signal-amber rounded-lg p-3">
-              <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Bottleneck stage</p>
-              <p className="font-display font-semibold text-ink">{bottleneckLabel()}</p>
-              <p className="text-xs text-steel tabular">
-                {stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} average to get through` : '—'}
-              </p>
-            </div>
-            <div className="border border-gray-200 rounded-lg p-3">
-              <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Longest aging, active now</p>
-              <p className="font-display font-semibold text-ink truncate">
-                {stats.longestAging?.label || 'None'}
-              </p>
-              <p className="text-xs text-steel tabular">
-                {stats.longestAging ? formatDays(stats.longestAging.days) : '—'}
-              </p>
-            </div>
-          </div>
-
-          {boards.map((board) => (
-            <div key={board.id}>
-              <h2 className="font-display font-semibold text-ink text-sm mb-2">{board.label}</h2>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="grid grid-cols-3 bg-asphalt text-[11px] uppercase tracking-wide text-steel px-3 py-2">
-                  <span>Stage</span>
-                  <span className="text-center">Now</span>
-                  <span className="text-right">Avg. time</span>
                 </div>
-                {board.stages.map((stage) => (
-                  <div
-                    key={stage.key}
-                    className="grid grid-cols-3 px-3 py-2 border-t border-gray-100 text-sm items-center"
+                <div className="bg-asphalt rounded-lg p-3">
+                  <p
+                    className={`text-2xl font-display font-bold tabular ${stats.overdueLoaners > 0 ? 'text-signal-red' : 'text-ink'}`}
                   >
-                    <span className="text-ink">{stage.label}</span>
-                    <span className="text-center tabular text-steel">
-                      {stats.currentCounts.get(`${board.key}::${stage.key}`) ?? 0}
-                    </span>
-                    <span className="text-right tabular text-steel">
-                      {formatDays(stats.avgDaysFor(board.key, stage.key))}
-                    </span>
-                  </div>
-                ))}
+                    {stats.overdueLoaners}
+                  </p>
+                  <p className="text-xs text-steel">Loaners overdue</p>
+                </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-asphalt rounded-lg p-3">
+                  <p className="text-2xl font-display font-bold text-ink tabular">
+                    {stats.avgNewCarryingCost !== null
+                      ? `$${stats.avgNewCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                      : '—'}
+                  </p>
+                  <p className="text-xs text-steel">Avg. cost — new vehicles</p>
+                </div>
+                <div className="bg-asphalt rounded-lg p-3">
+                  <p className="text-2xl font-display font-bold text-ink tabular">
+                    {stats.avgUsedCarryingCost !== null
+                      ? `$${stats.avgUsedCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                      : '—'}
+                  </p>
+                  <p className="text-xs text-steel">Avg. cost — used vehicles</p>
+                </div>
+              </div>
+
+              <div className="bg-ink rounded-xl p-5 text-white">
+                <p className="text-xs text-mist uppercase tracking-wide mb-1">Avg. Transit Time (Inbound → Service)</p>
+                <p className="font-display text-2xl font-semibold">{formatDays(stats.avgTransitTime)}</p>
+                <div className="flex gap-4 mt-2 text-xs text-mist">
+                  <span>Fastest turn: {formatDays(stats.fastestTurn)}</span>
+                  <span>Slowest turn: {formatDays(stats.slowestTurn)}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="border border-signal-amber rounded-lg p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Bottleneck stage</p>
+                  <p className="font-display font-semibold text-ink">{bottleneckLabel()}</p>
+                  <p className="text-xs text-steel tabular">
+                    {stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} average to get through` : '—'}
+                  </p>
+                </div>
+                <div className="border border-gray-200 rounded-lg p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Longest aging, active now</p>
+                  <p className="font-display font-semibold text-ink truncate">
+                    {stats.longestAging?.label || 'None'}
+                  </p>
+                  <p className="text-xs text-steel tabular">
+                    {stats.longestAging ? formatDays(stats.longestAging.days) : '—'}
+                  </p>
+                </div>
+              </div>
+
+              {boards.map((board) => (
+                <div key={board.id}>
+                  <h2 className="font-display font-semibold text-ink text-sm mb-2">{board.label}</h2>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="grid grid-cols-3 bg-asphalt text-[11px] uppercase tracking-wide text-steel px-3 py-2">
+                      <span>Stage</span>
+                      <span className="text-center">Now</span>
+                      <span className="text-right">Avg. time</span>
+                    </div>
+                    {board.stages.map((stage) => (
+                      <div
+                        key={stage.key}
+                        className="grid grid-cols-3 px-3 py-2 border-t border-gray-100 text-sm items-center"
+                      >
+                        <span className="text-ink">{stage.label}</span>
+                        <span className="text-center tabular text-steel">
+                          {stats.currentCounts.get(`${board.key}::${stage.key}`) ?? 0}
+                        </span>
+                        <span className="text-right tabular text-steel">
+                          {formatDays(stats.avgDaysFor(board.key, stage.key))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       {prioritiesModalOpen && (
