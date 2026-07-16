@@ -344,23 +344,16 @@ export default function AddVehicleModal({
     }
     if (created) {
       await notifyAssignee(created.id);
-      // TEMPORARY diagnostic — fires every time, success or failure, to
-      // pin down exactly what's happening after repeated reports of notes
-      // not showing up with no visible error at all. Safe to simplify
-      // back down once that's confirmed.
       // Whatever's still sitting in the note box at Save time gets
       // included too — typing a note and going straight to the main
       // Save button, without also tapping the smaller "+ Add note"
-      // button first, is a completely natural thing to do. This is the
-      // exact same fix already applied to editing an existing vehicle;
-      // it just hadn't been applied here too.
+      // button first, is a completely natural thing to do. Same fix
+      // already applied to editing an existing vehicle.
       const allPendingNotes = noteDraft.trim()
         ? [...pendingNotes, { content: noteDraft.trim(), taggedIds: noteDraftTaggedIds }]
         : pendingNotes;
 
-      if (allPendingNotes.length === 0) {
-        // Nothing typed and nothing added — genuinely nothing to save.
-      } else {
+      if (allPendingNotes.length > 0) {
         const noteRows = allPendingNotes.map((note) => {
           const taggedMembers = members.filter((m) => note.taggedIds.includes(m.id));
           return {
@@ -374,17 +367,8 @@ export default function AddVehicleModal({
         });
         const { error: notesError } = await supabase.from('vehicle_notes').insert(noteRows);
         if (notesError) {
-          window.alert(
-            `DIAGNOSTIC: Tried to save ${noteRows.length} note(s) for vehicle ${created.id}.\n\nInsert FAILED: ${notesError.message} (code: ${notesError.code ?? 'none'})`
-          );
+          console.error('Failed to save notes for new vehicle:', notesError.message);
         } else {
-          const { count, error: verifyError } = await supabase
-            .from('vehicle_notes')
-            .select('id', { count: 'exact', head: true })
-            .eq('vehicle_id', created.id);
-          window.alert(
-            `DIAGNOSTIC: Tried to save ${noteRows.length} note(s) for vehicle ${created.id}.\n\nInsert reported success. Reading back found ${count ?? 'null'} note(s) for this vehicle.${verifyError ? ` Verify read error: ${verifyError.message}` : ''}`
-          );
           const notificationRows: { recipient_id: string; dealership_id: string; vehicle_id: string; message: string }[] = [];
           allPendingNotes.forEach((note) => {
             const taggedMembers = members.filter((m) => note.taggedIds.includes(m.id));
