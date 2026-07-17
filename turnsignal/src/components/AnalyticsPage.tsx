@@ -595,6 +595,30 @@ export default function AnalyticsPage({
         };
       });
 
+    // ── Stage Impact ─────────────────────────────────────────────────────
+    // Merges Stage Health and Cost by Stage into one list, sorted by
+    // dollar impact — the two were answering closely related questions
+    // ("how's this stage doing" and "what's it costing") as two separate
+    // sections, which just meant looking in two places for one picture.
+    const stageImpact = (mainBoard?.stages ?? [])
+      .filter((s) => s.key !== 'inbound_trade_in')
+      .map((s) => {
+        const health = stageHealth.find((h) => h.key === s.key);
+        const cost = vehicles
+          .filter((v) => !v.completed && v.board === 'main' && v.stage === s.key)
+          .reduce((sum, v) => sum + carryingCostSoFar(v, newRatePerDay, usedRatePerDay), 0);
+        return {
+          key: s.key,
+          label: s.label,
+          avgDays: health?.avgDays ?? null,
+          waitingCount: health?.waitingCount ?? 0,
+          cost,
+          indicator: health?.indicator ?? ('green' as 'green' | 'yellow' | 'red'),
+        };
+      })
+      .filter((s) => s.waitingCount > 0 || s.cost > 0)
+      .sort((a, b) => b.cost - a.cost);
+
     // ── Board Watch ──────────────────────────────────────────────────────
     // Deliberately narrow — Stage Health already owns Main Board, so this
     // only watches the two things nothing else on the page sees: vehicles
@@ -720,22 +744,6 @@ export default function AnalyticsPage({
       });
     const targetCarryingCost = Math.max(0, totalCarryingCost - opportunityAmount);
 
-    // ── Cost by stage ────────────────────────────────────────────────────
-    // Which Main Board stage is actually generating the most carrying
-    // cost right now — a different question from "which stage is
-    // slowest," since a fast-moving stage with many vehicles can still
-    // generate more total cost than a slow stage with just one or two.
-    const costByStage = (mainBoard?.stages ?? [])
-      .filter((s) => s.key !== 'inbound_trade_in')
-      .map((s) => {
-        const cost = vehicles
-          .filter((v) => !v.completed && v.board === 'main' && v.stage === s.key)
-          .reduce((sum, v) => sum + carryingCostSoFar(v, newRatePerDay, usedRatePerDay), 0);
-        return { label: s.label, cost };
-      })
-      .filter((s) => s.cost > 0)
-      .sort((a, b) => b.cost - a.cost);
-
     // Vehicles currently waiting on title — feeds a conditional line in
     // Executive Summary below (only appears when the count is actually
     // above zero, rather than a permanent fixture).
@@ -773,7 +781,7 @@ export default function AnalyticsPage({
       boardWatchItems,
       opportunityAmount,
       targetCarryingCost,
-      costByStage,
+      stageImpact,
       waitingOnTitleCount,
       whatsWorking,
       weeklyTrend,
@@ -1124,29 +1132,53 @@ ${stats.todaysPriorities.length > 0 ? `
                 </div>
               )}
 
-              {/* Question 1: What should I focus on today? — the single
-                  biggest, most prominent thing on the page. */}
+              {/* Action Center — the single biggest, most visually
+                  dominant thing on the page, on purpose. Shows only the
+                  top 3 by design: a longer list reads as "everything is
+                  urgent," which means nothing is. */}
               <div>
-                <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
-                  What should I focus on today?
-                </p>
                 {stats.todaysPriorities.length > 0 ? (
-                  <button
-                    onClick={() => setPrioritiesModalOpen(true)}
-                    className="w-full text-left bg-ink rounded-2xl p-5 active:scale-[0.99] transition"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs text-mist uppercase tracking-wide">🚩 Today's Priorities</p>
-                      <span className="text-mist text-xs">Tap to view all →</span>
+                  <div className="bg-ink rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-3 gap-2">
+                      <p className="font-display text-lg font-bold text-white leading-tight">
+                        {Math.min(3, stats.todaysPriorities.length)} Vehicle
+                        {Math.min(3, stats.todaysPriorities.length) === 1 ? '' : 's'} Need Attention Now
+                      </p>
+                      {stats.todaysPriorities.length > 3 && (
+                        <button
+                          onClick={() => setPrioritiesModalOpen(true)}
+                          className="text-mist text-xs flex-shrink-0 whitespace-nowrap"
+                        >
+                          +{stats.todaysPriorities.length - 3} more →
+                        </button>
+                      )}
                     </div>
-                    <p className="font-display text-4xl font-bold text-white leading-none mb-2">
-                      {stats.todaysPriorities.length}
-                    </p>
-                    <p className="text-sm text-mist truncate">
-                      Top: {vehicleShortLabel(stats.todaysPriorities[0].vehicle)} — score{' '}
-                      {stats.todaysPriorities[0].score}
-                    </p>
-                  </button>
+                    <div className="space-y-2">
+                      {stats.todaysPriorities.slice(0, 3).map((p) => {
+                        const cost = carryingCostSoFar(p.vehicle, newRatePerDay, usedRatePerDay);
+                        return (
+                          <button
+                            key={p.vehicle.id}
+                            onClick={() => onNavigateToVehicle?.(p.vehicle.id, p.vehicle.board)}
+                            disabled={!onNavigateToVehicle}
+                            className="w-full text-left bg-white/[0.07] rounded-lg p-3 active:scale-[0.99] transition"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-display font-semibold text-white text-sm truncate">
+                                {vehicleShortLabel(p.vehicle)}
+                              </p>
+                              {cost > 0 && (
+                                <span className="text-signal-amber font-display font-bold text-sm tabular flex-shrink-0">
+                                  ${cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-mist text-xs mt-0.5">{p.recommendedAction}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ) : (
                   <div className="w-full bg-signal-green/10 border border-signal-green/30 rounded-2xl p-5">
                     <p className="text-sm text-ink font-medium">🟢 Nothing needs immediate attention right now.</p>
@@ -1154,15 +1186,12 @@ ${stats.todaysPriorities.length > 0 ? `
                 )}
               </div>
 
-              {/* Question 2: Where can we save money? — Carrying Cost and
-                  Cost by Stage sit together here since they're both
-                  answering the same question, instead of Cost by Stage
-                  being buried much further down the page. */}
+              {/* Executive Snapshot — deliberately secondary to the Action
+                  Center above: smaller, quieter, a glance rather than the
+                  main event. */}
               <div>
-                <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
-                  Where can we save money?
-                </p>
-                <div className="grid grid-cols-2 gap-3 mb-2">
+                <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">At a glance</p>
+                <div className="grid grid-cols-2 gap-3">
                   <OverviewTile
                     icon="⏱️"
                     accent="blue"
@@ -1188,24 +1217,68 @@ ${stats.todaysPriorities.length > 0 ? `
                     label="Carrying Cost"
                     sublabel={
                       stats.opportunityAmount > 1
-                        ? `~$${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} avoidable if on target`
+                        ? `~$${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} avoidable`
                         : undefined
                     }
                   />
+                  <OverviewTile
+                    icon="🚧"
+                    accent="red"
+                    value={bottleneckLabel()}
+                    label="Bottleneck"
+                    sublabel={stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} avg` : undefined}
+                  />
+                  <OverviewTile
+                    icon="⚠️"
+                    accent="red"
+                    value={String(stats.todaysPriorities.length)}
+                    label="Vehicles at Risk"
+                    onClick={stats.todaysPriorities.length > 0 ? () => setPrioritiesModalOpen(true) : undefined}
+                  />
                 </div>
-                {stats.costByStage.length > 0 && (
-                  <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                    {stats.costByStage.map((s) => (
-                      <div key={s.label} className="flex items-center justify-between px-3 py-2.5">
-                        <span className="text-sm text-ink">{s.label}</span>
-                        <span className="text-sm font-semibold text-ink tabular">
-                          ${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
+
+              {/* Where is the money stuck? — Stage Health and Cost by
+                  Stage merged into one list, sorted by dollar impact, so
+                  the most expensive bottleneck is always the first thing
+                  you see rather than something you have to find. */}
+              {stats.stageImpact.length > 0 && (
+                <div>
+                  <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
+                    Where is the money stuck?
+                  </p>
+                  <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                    {stats.stageImpact.map((s) => {
+                      const target = vehicles.find((v) => !v.completed && v.board === 'main' && v.stage === s.key);
+                      return (
+                        <button
+                          key={s.key}
+                          onClick={() => target && onNavigateToVehicle?.(target.id, 'main')}
+                          disabled={!target || !onNavigateToVehicle}
+                          className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span
+                              className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
+                              }`}
+                            />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-ink truncate">{s.label}</p>
+                              <p className="text-[11px] text-steel tabular">
+                                {formatDays(s.avgDays)} avg · {s.waitingCount} waiting
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-sm font-semibold text-ink tabular flex-shrink-0">
+                            ${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Pipeline strip — the shape of where things back up, at a
                   glance, without repeating any of Stage Health's numbers. */}
