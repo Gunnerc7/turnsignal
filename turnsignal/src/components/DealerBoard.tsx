@@ -22,6 +22,8 @@ import ManageBoardsModal from './ManageBoardsModal';
 import DealershipSettingsModal from './DealershipSettingsModal';
 import TeamRolesModal from './TeamRolesModal';
 import ScanToMoveModal from './ScanToMoveModal';
+import LiveInventoryTable from './LiveInventoryTable';
+import ImportInventoryModal from './ImportInventoryModal';
 
 const dropAnimation = {
   duration: 220,
@@ -51,6 +53,9 @@ export default function DealerBoard({
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [photoCounts, setPhotoCounts] = useState<Map<string, number>>(new Map());
   const { session, userName } = useAuth();
+  const [showLiveInventory, setShowLiveInventory] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [liveInventoryRefreshKey, setLiveInventoryRefreshKey] = useState(0);
   // Personal, board-wide toggle — not a dealership setting, so it's kept
   // in sessionStorage per-browser like other UI-only preferences (active
   // board tab, draft form state) rather than the database.
@@ -570,14 +575,25 @@ export default function DealerBoard({
         {boards.map((b) => (
           <button
             key={b.key}
-            onClick={() => setActiveBoardKey(b.key)}
+            onClick={() => {
+              setShowLiveInventory(false);
+              setActiveBoardKey(b.key);
+            }}
             className={`font-display px-3.5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-              activeBoardKey === b.key ? 'bg-signal-blue text-white' : 'text-steel bg-asphalt'
+              !showLiveInventory && activeBoardKey === b.key ? 'bg-signal-blue text-white' : 'text-steel bg-asphalt'
             }`}
           >
             {b.label}
           </button>
         ))}
+        <button
+          onClick={() => setShowLiveInventory(true)}
+          className={`font-display px-3.5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+            showLiveInventory ? 'bg-signal-blue text-white' : 'text-steel bg-asphalt'
+          }`}
+        >
+          Live Inventory
+        </button>
         {(isOwner || isManager) && (
           <button
             onClick={() => setManageBoardsOpen(true)}
@@ -698,7 +714,14 @@ export default function DealerBoard({
 
       {error && <p className="text-signal-red text-sm px-4 py-2">{error}</p>}
 
-      {activeBoard && (
+      {showLiveInventory ? (
+        <LiveInventoryTable
+          dealershipId={dealershipId}
+          refreshKey={liveInventoryRefreshKey}
+          onImportClick={() => setImportModalOpen(true)}
+        />
+      ) : (
+        activeBoard && (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           <div
             ref={topScrollRef}
@@ -766,6 +789,7 @@ export default function DealerBoard({
             )}
           </DragOverlay>
         </DndContext>
+        )
       )}
 
       {undoState && (
@@ -807,6 +831,15 @@ export default function DealerBoard({
           onClose={() => setScanModalOpen(false)}
           onMoved={loadVehicles}
           onNotFound={(vin) => setAddModal({ initialVin: vin })}
+        />
+      )}
+
+      {importModalOpen && (
+        <ImportInventoryModal
+          dealershipId={dealershipId}
+          boards={boards}
+          onClose={() => setImportModalOpen(false)}
+          onImported={() => setLiveInventoryRefreshKey((k) => k + 1)}
         />
       )}
 

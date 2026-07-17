@@ -18,6 +18,7 @@ export default function AddVehicleModal({
   vehicle,
   autoScan,
   initialVin,
+  prefill,
   restoreDraft = false,
   onClose,
   onCreated,
@@ -29,6 +30,17 @@ export default function AddVehicleModal({
   vehicle?: Vehicle;
   autoScan?: boolean;
   initialVin?: string;
+  prefill?: {
+    vin?: string;
+    year?: number;
+    make?: string;
+    model?: string;
+    trim?: string;
+    color?: string;
+    stockNumber?: string;
+    mileage?: number;
+    isNew?: boolean;
+  };
   restoreDraft?: boolean;
   onClose: () => void;
   onCreated: (newVehicleId?: string, board?: string) => void;
@@ -49,19 +61,26 @@ export default function AddVehicleModal({
   })();
 
   const [destination, setDestination] = useState(savedDraft?.destination ?? '');
-  const [vin, setVin] = useState(vehicle?.vin ?? initialVin ?? savedDraft?.vin ?? '');
-  const [year, setYear] = useState(vehicle?.year != null ? String(vehicle.year) : (savedDraft?.year ?? ''));
-  const [make, setMake] = useState(vehicle?.make ?? savedDraft?.make ?? '');
-  const [model, setModel] = useState(vehicle?.model ?? savedDraft?.model ?? '');
-  const [trim, setTrim] = useState(vehicle?.trim ?? savedDraft?.trim ?? '');
-  const [color, setColor] = useState(vehicle?.color ?? savedDraft?.color ?? '');
-  const [stockNumber, setStockNumber] = useState(vehicle?.stock_number ?? savedDraft?.stockNumber ?? '');
+  const [vin, setVin] = useState(vehicle?.vin ?? prefill?.vin ?? initialVin ?? savedDraft?.vin ?? '');
+  const [year, setYear] = useState(vehicle?.year != null ? String(vehicle.year) : (prefill?.year != null ? String(prefill.year) : (savedDraft?.year ?? '')));
+  const [make, setMake] = useState(vehicle?.make ?? prefill?.make ?? savedDraft?.make ?? '');
+  const [model, setModel] = useState(vehicle?.model ?? prefill?.model ?? savedDraft?.model ?? '');
+  const [trim, setTrim] = useState(vehicle?.trim ?? prefill?.trim ?? savedDraft?.trim ?? '');
+  const [color, setColor] = useState(vehicle?.color ?? prefill?.color ?? savedDraft?.color ?? '');
+  const [stockNumber, setStockNumber] = useState(vehicle?.stock_number ?? prefill?.stockNumber ?? savedDraft?.stockNumber ?? '');
   const [hasDamage, setHasDamage] = useState(vehicle?.has_damage ?? savedDraft?.hasDamage ?? false);
   const [carryingCostExcluded, setCarryingCostExcluded] = useState(vehicle?.carrying_cost_excluded ?? false);
-  const [isNew, setIsNew] = useState(vehicle?.is_new ?? savedDraft?.isNew ?? suggestIsNew(vehicle?.year ?? null));
+  const [isNew, setIsNew] = useState(vehicle?.is_new ?? prefill?.isNew ?? savedDraft?.isNew ?? suggestIsNew(vehicle?.year ?? null));
   const isNewManuallySet = useRef(isEditing); // editing an existing vehicle never auto-overrides its flag
-  const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : (savedDraft?.mileage ?? ''));
+  const [mileage, setMileage] = useState(vehicle?.mileage != null ? String(vehicle.mileage) : (prefill?.mileage != null ? String(prefill.mileage) : (savedDraft?.mileage ?? '')));
   const [assignedToId, setAssignedToId] = useState(vehicle?.assigned_to_id ?? savedDraft?.assignedToId ?? '');
+  // Live Inventory search — only relevant when creating a new vehicle.
+  // Typing a stock number and finding a match fills in everything else
+  // from data already known, instead of typing it all by hand or
+  // decoding a VIN fresh.
+  const [liveSearch, setLiveSearch] = useState('');
+  const [liveSearchStatus, setLiveSearchStatus] = useState<'idle' | 'searching' | 'found' | 'notfound'>('idle');
+  const [matchedLiveInventoryId, setMatchedLiveInventoryId] = useState<string | null>(null);
   // Only meaningful when creating a new vehicle — lets someone jot down a
   // note (or a few, each optionally tagging people) right in this same
   // form instead of having to close it and reopen Notes separately.
@@ -166,8 +185,11 @@ export default function AddVehicleModal({
   // A VIN handed in already (e.g. from the scan-to-move flow finding no
   // existing match) has already been confirmed by a scan — decode it
   // immediately instead of making the person scan or type it again.
+  // Skipped when prefill data is present, since that already came from a
+  // known-good source (the inventory import) and a decode on top would
+  // just overwrite it with a fresh guess.
   useEffect(() => {
-    if (initialVin && !isEditing) {
+    if (initialVin && !isEditing && !prefill) {
       runDecode(initialVin);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,6 +239,40 @@ export default function AddVehicleModal({
     if (!isNewManuallySet.current) {
       setIsNew(suggestIsNew(result.year ?? null));
     }
+  }
+
+  async function searchLiveInventory() {
+    const q = liveSearch.trim();
+    if (!q) return;
+    setLiveSearchStatus('searching');
+    setError(null);
+    const { data } = await supabase
+      .from('live_inventory')
+      .select('*')
+      .eq('dealership_id', dealershipId)
+      .is('removed_at', null)
+      .ilike('stock_number', q)
+      .maybeSingle();
+
+    if (!data) {
+      setLiveSearchStatus('notfound');
+      return;
+    }
+
+    setVin(data.vin ?? '');
+    if (data.year != null) setYear(String(data.year));
+    if (data.make) setMake(data.make);
+    if (data.model) setModel(data.model);
+    if (data.trim) setTrim(data.trim);
+    if (data.color) setColor(data.color);
+    if (data.stock_number) setStockNumber(data.stock_number);
+    if (data.mileage != null) setMileage(String(data.mileage));
+    if (data.vehicle_type) {
+      isNewManuallySet.current = true;
+      setIsNew(data.vehicle_type.toLowerCase() === 'new');
+    }
+    setMatchedLiveInventoryId(data.id);
+    setLiveSearchStatus('found');
   }
 
   async function handlePhotoCapture(dataUrl: string) {
@@ -344,6 +400,12 @@ export default function AddVehicleModal({
     }
     if (created) {
       await notifyAssignee(created.id);
+      // The vehicle now exists as a real, actively-tracked card — the
+      // Live Inventory entry it came from would just be a stale
+      // duplicate of the same physical vehicle if left in place.
+      if (matchedLiveInventoryId) {
+        await supabase.from('live_inventory').delete().eq('id', matchedLiveInventoryId);
+      }
       // Whatever's still sitting in the note box at Save time gets
       // included too — typing a note and going straight to the main
       // Save button, without also tapping the smaller "+ Add note"
@@ -421,6 +483,39 @@ export default function AddVehicleModal({
         </div>
 
         <div className="space-y-3 overflow-y-auto flex-1 px-5 py-4">
+          {!isEditing && (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Pull from Live Inventory (optional)</label>
+              <div className="flex gap-2">
+                <input
+                  value={liveSearch}
+                  onChange={(e) => {
+                    setLiveSearch(e.target.value);
+                    setLiveSearchStatus('idle');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') searchLiveInventory();
+                  }}
+                  placeholder="Stock number…"
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base"
+                />
+                <button
+                  onClick={searchLiveInventory}
+                  disabled={!liveSearch.trim() || liveSearchStatus === 'searching'}
+                  className="flex-shrink-0 bg-asphalt text-ink font-medium text-sm px-4 rounded-lg disabled:opacity-50"
+                >
+                  {liveSearchStatus === 'searching' ? '…' : 'Search'}
+                </button>
+              </div>
+              {liveSearchStatus === 'found' && (
+                <p className="text-xs text-signal-green font-medium mt-1">✓ Pulled from Live Inventory — check the details below.</p>
+              )}
+              {liveSearchStatus === 'notfound' && (
+                <p className="text-xs text-steel mt-1">No match for that stock number — fill in the details below instead.</p>
+              )}
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-ink mb-1">VIN</label>
             <div className="flex gap-2">

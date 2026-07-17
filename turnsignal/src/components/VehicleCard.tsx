@@ -171,6 +171,38 @@ export default function VehicleCard({
         ...(nowCompleting && vehicle.board === 'loaners' ? { loaner_status: null } : {}),
       })
       .eq('id', vehicle.id);
+
+    // Any vehicle marked complete — a finished loaner or a normal recon
+    // vehicle wrapping up — is genuinely live and on the lot now, so it
+    // belongs in Live Inventory automatically, not just from the weekly
+    // upload. Un-completing removes it again, since it's no longer
+    // actually finished.
+    if (vehicle.vin) {
+      const vin = vehicle.vin.toUpperCase();
+      if (nowCompleting) {
+        await supabase.from('live_inventory').upsert(
+          {
+            dealership_id: vehicle.dealership_id,
+            stock_number: vehicle.stock_number,
+            vehicle_type: vehicle.is_new ? 'New' : 'Used',
+            year: vehicle.year,
+            make: vehicle.make,
+            model: vehicle.model,
+            trim: vehicle.trim,
+            mileage: vehicle.mileage,
+            color: vehicle.color,
+            vin,
+            dms_state: 'Live',
+            imported_at: now,
+            removed_at: null,
+          },
+          { onConflict: 'dealership_id,vin' }
+        );
+      } else {
+        await supabase.from('live_inventory').delete().eq('dealership_id', vehicle.dealership_id).eq('vin', vin);
+      }
+    }
+
     setToggling(false);
     onMoved();
   }
