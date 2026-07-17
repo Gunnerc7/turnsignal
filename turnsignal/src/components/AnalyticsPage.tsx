@@ -1134,59 +1134,57 @@ ${stats.todaysPriorities.length > 0 ? `
 
           {/* The landing view — four bold, tappable squares. Nothing else
               lives here; every real number sits behind one of these
-              four, one tap away. */}
-          <div className="grid grid-cols-2 gap-3">
+              four, one tap away. Width capped on purpose so all four
+              stay visible without scrolling, rather than stretching to
+              fill the screen. */}
+          <div className="grid grid-cols-2 gap-2.5 max-w-[300px] mx-auto">
             <button
               onClick={() => setExpandedZone('attention')}
-              className="aspect-square flex flex-col items-center justify-center gap-3 bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
+              className="aspect-square flex flex-col items-center justify-center gap-2 bg-ink rounded-2xl p-2 active:scale-[0.98] transition"
             >
-              <div className="w-14 h-14 rounded-xl bg-signal-red/20 text-signal-red flex items-center justify-center">
-                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+              <div className="w-9 h-9 rounded-lg bg-signal-red/20 text-signal-red flex items-center justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                   <path d="M12 2C10 2 8.5 3.5 8.5 5.5V6.5C6 7.5 4.5 10 4.5 13V17L2.5 19V20H21.5V19L19.5 17V13C19.5 10 18 7.5 15.5 6.5V5.5C15.5 3.5 14 2 12 2Z" fill="currentColor" />
                   <path d="M9.5 21C9.5 22.1 10.6 23 12 23C13.4 23 14.5 22.1 14.5 21H9.5Z" fill="currentColor" />
                 </svg>
               </div>
-              <p className="font-display text-sm font-semibold text-white text-center">Needs Attention</p>
+              <p className="font-display text-xs font-semibold text-white text-center leading-tight">Needs Attention</p>
             </button>
 
             <button
               onClick={() => setExpandedZone('turnrate')}
-              className="aspect-square flex flex-col items-center justify-center gap-3 bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
+              className="aspect-square flex flex-col items-center justify-center gap-1 bg-ink rounded-2xl p-2 active:scale-[0.98] transition"
             >
-              <div className="w-14 h-14 rounded-xl bg-signal-blue/20 text-signal-blue flex items-center justify-center">
-                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
-                  <path d="M4 18C4 12.5 8 8 12 8C16 8 20 12.5 20 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <line x1="12" y1="15" x2="15" y2="11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <circle cx="12" cy="15" r="1.5" fill="currentColor" />
-                </svg>
+              <div className="w-14 h-8">
+                <TurnRateGauge value={stats.avgTurnTime} yellowDays={yellowDays} redDays={redDays} />
               </div>
-              <p className="font-display text-sm font-semibold text-white text-center">Turn Rate &amp; Cost</p>
+              <p className="font-display text-xs font-semibold text-white text-center leading-tight">Turn Rate &amp; Cost</p>
             </button>
 
             <button
               onClick={() => setExpandedZone('improvements')}
-              className="aspect-square flex flex-col items-center justify-center gap-3 bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
+              className="aspect-square flex flex-col items-center justify-center gap-2 bg-ink rounded-2xl p-2 active:scale-[0.98] transition"
             >
-              <div className="w-14 h-14 rounded-xl bg-signal-amber/20 text-signal-amber flex items-center justify-center">
-                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+              <div className="w-9 h-9 rounded-lg bg-signal-amber/20 text-signal-amber flex items-center justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                   <path d="M4 12H17M17 12L12 7M17 12L12 17" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-              <p className="font-display text-sm font-semibold text-white text-center">Improvements</p>
+              <p className="font-display text-xs font-semibold text-white text-center leading-tight">Improvements</p>
             </button>
 
             <button
               onClick={() => setExpandedZone('deepdive')}
-              className="aspect-square flex flex-col items-center justify-center gap-3 bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
+              className="aspect-square flex flex-col items-center justify-center gap-2 bg-ink rounded-2xl p-2 active:scale-[0.98] transition"
             >
-              <div className="w-14 h-14 rounded-xl bg-white/10 text-mist flex items-center justify-center">
-                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+              <div className="w-9 h-9 rounded-lg bg-white/10 text-mist flex items-center justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                   <rect x="5" y="3" width="14" height="6" rx="1" stroke="currentColor" strokeWidth="2" />
                   <rect x="5" y="10" width="14" height="6" rx="1" stroke="currentColor" strokeWidth="2" />
                   <rect x="5" y="17" width="14" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
                 </svg>
               </div>
-              <p className="font-display text-sm font-semibold text-white text-center">Deep Dive</p>
+              <p className="font-display text-xs font-semibold text-white text-center leading-tight">Deep Dive</p>
             </button>
           </div>
         </div>
@@ -1218,7 +1216,7 @@ ${stats.todaysPriorities.length > 0 ? `
                           </p>
                           {stats.todaysPriorities.length > 3 && (
                             <button
-                              onClick={() => setPrioritiesModalOpen(true)}
+                              onClick={() => { setExpandedZone(null); setPrioritiesModalOpen(true); }}
                               className="text-mist text-xs flex-shrink-0 whitespace-nowrap"
                             >
                               +{stats.todaysPriorities.length - 3} more →
@@ -1314,25 +1312,25 @@ ${stats.todaysPriorities.length > 0 ? `
                           <span>0 days</span>
                           <span>14 days</span>
                         </div>
-                        {simulatedTurnRate !== null && stats.avgTurnTime !== null && (
-                          (() => {
-                            const delta = simulatedTurnRate - stats.avgTurnTime;
-                            const impact = delta * stats.blendedDailyRate * stats.completedInRange;
-                            return (
-                              <p className="text-center text-sm">
-                                <span className={impact < 0 ? 'text-signal-green font-semibold' : impact > 0 ? 'text-signal-red font-semibold' : 'text-mist'}>
-                                  {Math.abs(impact) < 1
-                                    ? 'About the same as today'
-                                    : `~$${Math.abs(impact).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${impact < 0 ? 'saved' : 'more'} vs. today`}
-                                </span>
-                                <br />
-                                <span className="text-mist text-xs">
-                                  estimate across {stats.completedInRange} vehicle{stats.completedInRange === 1 ? '' : 's'} this period
-                                </span>
-                              </p>
-                            );
-                          })()
-                        )}
+                        {(() => {
+                          const currentAvg = stats.avgTurnTime;
+                          if (simulatedTurnRate === null || currentAvg === null) return null;
+                          const delta = simulatedTurnRate - currentAvg;
+                          const impact = delta * stats.blendedDailyRate * stats.completedInRange;
+                          return (
+                            <p className="text-center text-sm">
+                              <span className={impact < 0 ? 'text-signal-green font-semibold' : impact > 0 ? 'text-signal-red font-semibold' : 'text-mist'}>
+                                {Math.abs(impact) < 1
+                                  ? 'About the same as today'
+                                  : `~$${Math.abs(impact).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${impact < 0 ? 'saved' : 'more'} vs. today`}
+                              </span>
+                              <br />
+                              <span className="text-mist text-xs">
+                                estimate across {stats.completedInRange} vehicle{stats.completedInRange === 1 ? '' : 's'} this period
+                              </span>
+                            </p>
+                          );
+                        })()}
                         {simulatedTurnRate !== null && (
                           <button
                             onClick={() => setSimulatedTurnRate(null)}
@@ -1386,7 +1384,7 @@ ${stats.todaysPriorities.length > 0 ? `
                         accent="red"
                         value={String(stats.todaysPriorities.length)}
                         label="Vehicles at Risk"
-                        onClick={stats.todaysPriorities.length > 0 ? () => setPrioritiesModalOpen(true) : undefined}
+                        onClick={stats.todaysPriorities.length > 0 ? () => { setExpandedZone(null); setPrioritiesModalOpen(true); } : undefined}
                       />
                     </div>
 
