@@ -118,7 +118,7 @@ export default function VehicleCard({
   // to the neutral per-stage count from getThresholds returning null.
   const days = daysSince(vehicle.recon_started_at ?? vehicle.stage_entered_at);
   const thresholds = getThresholds(vehicle.board, vehicle.stage, yellowDays, redDays);
-  const overdueLoaner = isOverdueLoaner(vehicle.loaner_return_date);
+  const overdueLoaner = !vehicle.completed && isOverdueLoaner(vehicle.loaner_return_date);
   const carryingCost = carryingCostSoFar(vehicle, newRatePerDay, usedRatePerDay);
   const vehicleLabel = `${vehicle.stock_number ? vehicle.stock_number + '-' : ''}${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''}`.trim();
 

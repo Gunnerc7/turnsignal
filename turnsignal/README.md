@@ -221,6 +221,13 @@ That looks up the dealership by name, so this same snippet works for any dealers
 - [x] Landing squares shrunk significantly — the grid is now capped at a fixed, modest width instead of stretching to fill the screen, so all 4 fit comfortably without scrolling, with icon and text sized to match instead of getting lost in an oversized box.
 - [x] Turn Rate & Cost box now shows the actual speedometer gauge itself as its icon — a real tiny instance of the same gauge used inside the zone, not a generic drawing standing in for it.
 - [x] Fixed the "+N more" priorities list opening behind the zone popup instead of in front of it — a real stacking bug: the zone modal was layered above the priorities modal, so opening priorities while a zone was already open rendered it underneath, invisible until the zone was closed. Fixed both by closing the zone first when priorities opens (so only one popup is ever showing at once) and by raising the priorities modal's own layering as a backup, in case anything else ever opens it while a zone is up.
+- [x] Fixed a real bug: a completed loaner still showed as overdue if its due date had passed, even though the vehicle was done and back — completing a card now correctly clears its overdue status everywhere it's shown (the card itself and the overdue count in Analytics), regardless of what due date was set.
+- [x] Landing squares are now responsive — modest on a phone, noticeably larger on a bigger screen like a desktop monitor, instead of one fixed small size everywhere. Icon and text sizing bumped up to match.
+- [x] Removed Board Watch from Needs Attention — redundant with what that zone already surfaces.
+- [x] Removed the pipeline strip (colored dots) from Improvements — wasn't conveying anything the rest of that zone doesn't already say more directly.
+- [x] Removed Vehicles at Risk from Turn Rate & Cost — redundant with the count already shown in Needs Attention.
+- [x] Renamed "What can I show the owner?" to **Wins This Month**, and replaced the generic "N vehicles completed" line — which didn't actually say anything useful — with a specific, real highlight: the single fastest-turning vehicle that period, named directly with its actual turn time. Turn rate improvement and carrying cost savings vs. the previous period stayed, since those were already genuine, specific facts.
+- [x] Fixed the confusing "$X avoidable" wording on the Carrying Cost tile — now spells out the condition inline ("avoidable if every vehicle stayed on target") instead of leaving "avoidable" hanging with no explanation of avoidable how.
 
 ## Owner mode setup (one-time)
 

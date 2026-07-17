@@ -306,6 +306,7 @@ export default function AnalyticsPage({
     // sit in that column a while (photos, pricing, approval) before recon
     // work is genuinely finished, so completion is the truer finish line.
     const turnTimes: number[] = [];
+    const turnTimeDetails: { vehicle: VehicleRow; days: number }[] = [];
     vehicles.forEach((v) => {
       if (v.stage !== 'price_for_lot' || !v.completed || !v.completed_at) return;
       if (!inRange(v.completed_at)) return;
@@ -313,7 +314,12 @@ export default function AnalyticsPage({
       if (!serviceEntered) return;
       const days = (new Date(v.completed_at).getTime() - serviceEntered.getTime()) / 86400000;
       turnTimes.push(days);
+      turnTimeDetails.push({ vehicle: v, days });
     });
+    const fastestVehicleThisPeriod =
+      turnTimeDetails.length > 0
+        ? turnTimeDetails.reduce((min, cur) => (cur.days < min.days ? cur : min))
+        : null;
     const avgTurnTime = turnTimes.length ? turnTimes.reduce((a, b) => a + b, 0) / turnTimes.length : null;
     const fastestTurn = turnTimes.length ? Math.min(...turnTimes) : null;
     const slowestTurn = turnTimes.length ? Math.max(...turnTimes) : null;
@@ -371,7 +377,7 @@ export default function AnalyticsPage({
 
     const damagedCount = vehicles.filter((v) => v.has_damage).length;
     const overdueLoaners = vehicles.filter(
-      (v) => v.loaner_return_date && new Date(v.loaner_return_date) < new Date()
+      (v) => !v.completed && v.loaner_return_date && new Date(v.loaner_return_date) < new Date()
     ).length;
     const mainBoardActive = vehicles.filter((v) => v.board === 'main' && !v.completed).length;
 
@@ -710,30 +716,34 @@ export default function AnalyticsPage({
     const carryingCostChangeVsPrevious =
       previousPeriodCarryingCost !== null ? periodCarryingCost - previousPeriodCarryingCost : null;
 
-    // ── What's Working ───────────────────────────────────────────────────
+    // ── Wins This Month ──────────────────────────────────────────────────
     // Answers "what can I show the owner" — deliberately built from
-    // numbers already computed above, nothing new calculated here, same
-    // reasoning as the old Executive Summary. Only ever states real,
-    // verifiable facts about the selected period; no causal claim about
-    // WHY something improved, just that it did.
-    const whatsWorking: { emoji: string; text: string }[] = [];
-    if (turnTimes.length > 0) {
-      whatsWorking.push({
-        emoji: '✅',
-        text: `${turnTimes.length} vehicle${turnTimes.length === 1 ? '' : 's'} completed this period.`,
+    // numbers already computed above, nothing new calculated here. Only
+    // ever states real, verifiable facts about the selected period; no
+    // causal claim about WHY something improved, just that it did.
+    // Naming a specific vehicle is a genuine highlight worth pointing to
+    // — a bare completion count on its own doesn't actually say anything
+    // useful about how the period went.
+    const wins: { emoji: string; text: string }[] = [];
+    if (fastestVehicleThisPeriod) {
+      const v = fastestVehicleThisPeriod.vehicle;
+      const label = `${v.stock_number ? v.stock_number + '-' : ''}${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim();
+      wins.push({
+        emoji: '🏆',
+        text: `${label} was your fastest turn this period — ${fastestVehicleThisPeriod.days.toFixed(1)} days.`,
       });
     }
     if (avgTurnTime !== null && previousAvgTurnTime !== null) {
       const delta = previousAvgTurnTime - avgTurnTime;
       if (delta > 0.1) {
-        whatsWorking.push({
+        wins.push({
           emoji: '✅',
           text: `Turn rate improved ${delta.toFixed(1)} days vs. the previous period (${avgTurnTime.toFixed(1)} days now).`,
         });
       }
     }
     if (carryingCostChangeVsPrevious !== null && carryingCostChangeVsPrevious < -1) {
-      whatsWorking.push({
+      wins.push({
         emoji: '✅',
         text: `$${Math.abs(carryingCostChangeVsPrevious).toLocaleString(undefined, { maximumFractionDigits: 0 })} less spent on carrying cost vs. the previous period.`,
       });
@@ -801,7 +811,7 @@ export default function AnalyticsPage({
       targetCarryingCost,
       stageImpact,
       waitingOnTitleCount,
-      whatsWorking,
+      wins,
       weeklyTrend,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -991,9 +1001,9 @@ ${stats.todaysPriorities.length > 0 ? `
     return insights;
   }
 
-  // Separate from the mainBoard used inside the stats calculation above —
-  // that one is scoped to the useMemo and isn't reachable from render.
-  const mainBoardForDisplay = boards.find((b) => b.key === 'main');
+  // mainBoard used inside the stats useMemo above isn't reachable from
+  // render — that one's scoped to the useMemo, this file no longer needs
+  // a render-level copy since the pipeline strip that used it was removed.
 
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
@@ -1135,56 +1145,56 @@ ${stats.todaysPriorities.length > 0 ? `
           {/* The landing view — four bold, tappable squares. Nothing else
               lives here; every real number sits behind one of these
               four, one tap away. Width capped on purpose so all four
-              stay visible without scrolling, rather than stretching to
-              fill the screen. */}
-          <div className="grid grid-cols-2 gap-2.5 max-w-[300px] mx-auto">
+              stay visible without scrolling — scales up on larger
+              screens instead of staying pinned to a small mobile size. */}
+          <div className="grid grid-cols-2 gap-3 max-w-[380px] sm:max-w-2xl mx-auto">
             <button
               onClick={() => setExpandedZone('attention')}
-              className="aspect-square flex flex-col items-center justify-center gap-2 bg-ink rounded-2xl p-2 active:scale-[0.98] transition"
+              className="aspect-square flex flex-col items-center justify-center gap-2.5 bg-ink rounded-2xl p-3 active:scale-[0.98] transition"
             >
-              <div className="w-9 h-9 rounded-lg bg-signal-red/20 text-signal-red flex items-center justify-center">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <div className="w-11 h-11 rounded-lg bg-signal-red/20 text-signal-red flex items-center justify-center">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                   <path d="M12 2C10 2 8.5 3.5 8.5 5.5V6.5C6 7.5 4.5 10 4.5 13V17L2.5 19V20H21.5V19L19.5 17V13C19.5 10 18 7.5 15.5 6.5V5.5C15.5 3.5 14 2 12 2Z" fill="currentColor" />
                   <path d="M9.5 21C9.5 22.1 10.6 23 12 23C13.4 23 14.5 22.1 14.5 21H9.5Z" fill="currentColor" />
                 </svg>
               </div>
-              <p className="font-display text-xs font-semibold text-white text-center leading-tight">Needs Attention</p>
+              <p className="font-display text-sm font-semibold text-white text-center leading-tight">Needs Attention</p>
             </button>
 
             <button
               onClick={() => setExpandedZone('turnrate')}
-              className="aspect-square flex flex-col items-center justify-center gap-1 bg-ink rounded-2xl p-2 active:scale-[0.98] transition"
+              className="aspect-square flex flex-col items-center justify-center gap-1.5 bg-ink rounded-2xl p-3 active:scale-[0.98] transition"
             >
-              <div className="w-14 h-8">
+              <div className="w-20 h-11">
                 <TurnRateGauge value={stats.avgTurnTime} yellowDays={yellowDays} redDays={redDays} />
               </div>
-              <p className="font-display text-xs font-semibold text-white text-center leading-tight">Turn Rate &amp; Cost</p>
+              <p className="font-display text-sm font-semibold text-white text-center leading-tight">Turn Rate &amp; Cost</p>
             </button>
 
             <button
               onClick={() => setExpandedZone('improvements')}
-              className="aspect-square flex flex-col items-center justify-center gap-2 bg-ink rounded-2xl p-2 active:scale-[0.98] transition"
+              className="aspect-square flex flex-col items-center justify-center gap-2.5 bg-ink rounded-2xl p-3 active:scale-[0.98] transition"
             >
-              <div className="w-9 h-9 rounded-lg bg-signal-amber/20 text-signal-amber flex items-center justify-center">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <div className="w-11 h-11 rounded-lg bg-signal-amber/20 text-signal-amber flex items-center justify-center">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                   <path d="M4 12H17M17 12L12 7M17 12L12 17" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-              <p className="font-display text-xs font-semibold text-white text-center leading-tight">Improvements</p>
+              <p className="font-display text-sm font-semibold text-white text-center leading-tight">Improvements</p>
             </button>
 
             <button
               onClick={() => setExpandedZone('deepdive')}
-              className="aspect-square flex flex-col items-center justify-center gap-2 bg-ink rounded-2xl p-2 active:scale-[0.98] transition"
+              className="aspect-square flex flex-col items-center justify-center gap-2.5 bg-ink rounded-2xl p-3 active:scale-[0.98] transition"
             >
-              <div className="w-9 h-9 rounded-lg bg-white/10 text-mist flex items-center justify-center">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <div className="w-11 h-11 rounded-lg bg-white/10 text-mist flex items-center justify-center">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                   <rect x="5" y="3" width="14" height="6" rx="1" stroke="currentColor" strokeWidth="2" />
                   <rect x="5" y="10" width="14" height="6" rx="1" stroke="currentColor" strokeWidth="2" />
                   <rect x="5" y="17" width="14" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
                 </svg>
               </div>
-              <p className="font-display text-xs font-semibold text-white text-center leading-tight">Deep Dive</p>
+              <p className="font-display text-sm font-semibold text-white text-center leading-tight">Deep Dive</p>
             </button>
           </div>
         </div>
@@ -1252,25 +1262,6 @@ ${stats.todaysPriorities.length > 0 ? `
                     ) : (
                       <div className="w-full bg-signal-green/10 border border-signal-green/30 rounded-2xl p-5">
                         <p className="text-sm text-ink font-medium">🟢 Nothing needs immediate attention right now.</p>
-                      </div>
-                    )}
-
-                    {stats.boardWatchItems.length > 0 && (
-                      <div>
-                        <h2 className="font-display font-semibold text-ink text-sm mb-2">Board Watch</h2>
-                        <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                          {stats.boardWatchItems.map((item, i) => (
-                            <button
-                              key={i}
-                              onClick={() => onNavigateToVehicle?.(item.vehicleId, item.board)}
-                              disabled={!onNavigateToVehicle}
-                              className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
-                            >
-                              <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
-                              <p className="text-sm text-ink leading-snug">{item.text}</p>
-                            </button>
-                          ))}
-                        </div>
                       </div>
                     )}
                   </>
@@ -1342,7 +1333,7 @@ ${stats.todaysPriorities.length > 0 ? `
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-3 gap-2.5">
                       <OverviewTile
                         icon="⏱️"
                         accent="blue"
@@ -1368,7 +1359,7 @@ ${stats.todaysPriorities.length > 0 ? `
                         label="Carrying Cost"
                         sublabel={
                           stats.opportunityAmount > 1
-                            ? `~$${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} avoidable`
+                            ? `~$${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} avoidable if every vehicle stayed on target`
                             : undefined
                         }
                       />
@@ -1379,22 +1370,15 @@ ${stats.todaysPriorities.length > 0 ? `
                         label="Bottleneck"
                         sublabel={stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} avg` : undefined}
                       />
-                      <OverviewTile
-                        icon="⚠️"
-                        accent="red"
-                        value={String(stats.todaysPriorities.length)}
-                        label="Vehicles at Risk"
-                        onClick={stats.todaysPriorities.length > 0 ? () => { setExpandedZone(null); setPrioritiesModalOpen(true); } : undefined}
-                      />
                     </div>
 
-                    {stats.whatsWorking.length > 0 && (
+                    {stats.wins.length > 0 && (
                       <div>
                         <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
-                          What can I show the owner?
+                          Wins This Month
                         </p>
                         <div className="bg-signal-green/5 border border-signal-green/20 rounded-lg divide-y divide-signal-green/10">
-                          {stats.whatsWorking.map((item, i) => (
+                          {stats.wins.map((item, i) => (
                             <div key={i} className="flex items-start gap-2.5 px-3 py-2.5">
                               <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
                               <p className="text-sm text-ink leading-snug">{item.text}</p>
@@ -1445,33 +1429,6 @@ ${stats.todaysPriorities.length > 0 ? `
                             );
                           })}
                         </div>
-                      </div>
-                    )}
-
-                    {mainBoardForDisplay && (
-                      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">
-                        {mainBoardForDisplay.stages.map((s, i) => {
-                          const health = stats.stageHealth.find((h) => h.key === s.key);
-                          const dotColor =
-                            s.key === 'inbound_trade_in'
-                              ? 'bg-gray-300'
-                              : health?.indicator === 'green'
-                              ? 'bg-signal-green'
-                              : health?.indicator === 'yellow'
-                              ? 'bg-signal-amber'
-                              : health?.indicator === 'red'
-                              ? 'bg-signal-red'
-                              : 'bg-gray-300';
-                          return (
-                            <div key={s.key} className="flex items-center flex-1 last:flex-none">
-                              <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                                <span className={`w-3 h-3 rounded-full ${dotColor}`} />
-                                <span className="text-[9px] text-steel text-center leading-tight max-w-[52px]">{s.label}</span>
-                              </div>
-                              {i < mainBoardForDisplay.stages.length - 1 && <div className="h-px bg-gray-200 flex-1 mx-1" />}
-                            </div>
-                          );
-                        })}
                       </div>
                     )}
 
