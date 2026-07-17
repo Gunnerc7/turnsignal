@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { BoardConfig, fetchBoards } from '../lib/boards';
 import { isAgingRed, getThresholds } from '../lib/aging';
@@ -8,6 +9,7 @@ import TodaysPrioritiesModal from './TodaysPrioritiesModal';
 import OverviewTile from './OverviewTile';
 import TurnRateGauge from './TurnRateGauge';
 import CompletionsTrendChart from './CompletionsTrendChart';
+import ModalCloseButton from './ModalCloseButton';
 
 // ── Data layer ───────────────────────────────────────────────────────────
 // Fetching and stats computation are kept fully separate from rendering
@@ -148,6 +150,7 @@ export default function AnalyticsPage({
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [expandedZone, setExpandedZone] = useState<'attention' | 'turnrate' | 'improvements' | 'deepdive' | null>(null);
+  const [simulatedTurnRate, setSimulatedTurnRate] = useState<number | null>(null);
 
   const load = useCallback(
     async (isInitial: boolean) => {
@@ -314,6 +317,19 @@ export default function AnalyticsPage({
     const avgTurnTime = turnTimes.length ? turnTimes.reduce((a, b) => a + b, 0) / turnTimes.length : null;
     const fastestTurn = turnTimes.length ? Math.min(...turnTimes) : null;
     const slowestTurn = turnTimes.length ? Math.max(...turnTimes) : null;
+
+    // A single representative $/day figure, weighted by the actual
+    // current mix of new vs. used active vehicles — used only by the
+    // what-if turn rate simulator below, to translate "N fewer days"
+    // into a real dollar estimate without needing a much heavier
+    // per-vehicle projection.
+    const activeMainBoardVehicles = vehicles.filter((v) => !v.completed && v.board === 'main');
+    const activeNewCount = activeMainBoardVehicles.filter((v) => v.is_new).length;
+    const activeUsedCount = activeMainBoardVehicles.length - activeNewCount;
+    const blendedDailyRate =
+      activeMainBoardVehicles.length > 0
+        ? (activeNewCount * newRatePerDay + activeUsedCount * usedRatePerDay) / activeMainBoardVehicles.length
+        : (newRatePerDay + usedRatePerDay) / 2;
 
     // Same Turn Rate calculation, run again against the immediately
     // preceding period of equal length — this is what powers the trend
@@ -762,6 +778,7 @@ export default function AnalyticsPage({
       previousAvgTurnTime,
       fastestTurn,
       slowestTurn,
+      blendedDailyRate,
       completedInRange: turnTimes.length,
       addedInRange,
       longestAging,
@@ -1093,496 +1110,538 @@ ${stats.todaysPriorities.length > 0 ? `
         <p className="text-steel text-sm p-4">Loading…</p>
       ) : (
         <div className="flex-1 overflow-y-auto p-4">
-          {expandedZone === null ? (
-            <>
-              {/* Time-sensitive callouts only — nothing permanent lives here,
-                  so this stays empty (and invisible) most of the time. */}
-              {stats.waitingOnTitleCount > 0 && (
-                <div className="flex items-center gap-2 bg-signal-amber/10 border border-signal-amber/30 rounded-xl px-3 py-2.5 mb-3">
-                  <span className="text-base">🟡</span>
-                  <p className="text-sm text-ink">
-                    {stats.waitingOnTitleCount} vehicle{stats.waitingOnTitleCount === 1 ? ' is' : 's are'} waiting on
-                    title — follow up on paperwork.
-                  </p>
-                </div>
-              )}
-              {stats.carryingCostChangeVsPrevious !== null && stats.carryingCostChangeVsPrevious > 0 && (
-                <div className="flex items-center gap-2 bg-signal-red/10 border border-signal-red/30 rounded-xl px-3 py-2.5 mb-3">
-                  <span className="text-base">🔴</span>
-                  <p className="text-sm text-ink">
-                    Carrying cost is up $
-                    {stats.carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the
-                    previous period.
-                  </p>
-                </div>
-              )}
+          {/* Time-sensitive callouts only — nothing permanent lives here,
+              so this stays empty (and invisible) most of the time. */}
+          {stats.waitingOnTitleCount > 0 && (
+            <div className="flex items-center gap-2 bg-signal-amber/10 border border-signal-amber/30 rounded-xl px-3 py-2.5 mb-3">
+              <span className="text-base">🟡</span>
+              <p className="text-sm text-ink">
+                {stats.waitingOnTitleCount} vehicle{stats.waitingOnTitleCount === 1 ? ' is' : 's are'} waiting on
+                title — follow up on paperwork.
+              </p>
+            </div>
+          )}
+          {stats.carryingCostChangeVsPrevious !== null && stats.carryingCostChangeVsPrevious > 0 && (
+            <div className="flex items-center gap-2 bg-signal-red/10 border border-signal-red/30 rounded-xl px-3 py-2.5 mb-3">
+              <span className="text-base">🔴</span>
+              <p className="text-sm text-ink">
+                Carrying cost is up $
+                {stats.carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the
+                previous period.
+              </p>
+            </div>
+          )}
 
-              {/* The landing view — four bold, tappable zones. Nothing else
-                  lives here; every real number sits behind one of these
-                  four, one tap away. */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setExpandedZone('attention')}
-                  className="text-left bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-signal-red/20 text-signal-red flex items-center justify-center mb-3">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                      <path d="M12 2C10 2 8.5 3.5 8.5 5.5V6.5C6 7.5 4.5 10 4.5 13V17L2.5 19V20H21.5V19L19.5 17V13C19.5 10 18 7.5 15.5 6.5V5.5C15.5 3.5 14 2 12 2Z" fill="currentColor" />
-                      <path d="M9.5 21C9.5 22.1 10.6 23 12 23C13.4 23 14.5 22.1 14.5 21H9.5Z" fill="currentColor" />
-                    </svg>
-                  </div>
-                  <p className="font-display text-2xl font-bold text-white tabular leading-none">
-                    {stats.todaysPriorities.length}
-                  </p>
-                  <p className="text-xs text-mist mt-1.5">Needs Attention</p>
-                </button>
-
-                <button
-                  onClick={() => setExpandedZone('turnrate')}
-                  className="text-left bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-signal-blue/20 text-signal-blue flex items-center justify-center mb-3">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                      <path d="M4 18C4 12.5 8 8 12 8C16 8 20 12.5 20 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <line x1="12" y1="15" x2="15" y2="11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <circle cx="12" cy="15" r="1.5" fill="currentColor" />
-                    </svg>
-                  </div>
-                  <p className="font-display text-2xl font-bold text-white tabular leading-none">
-                    {formatDays(stats.avgTurnTime)}
-                  </p>
-                  <p className="text-xs text-mist mt-1.5">Turn Rate &amp; Cost</p>
-                </button>
-
-                <button
-                  onClick={() => setExpandedZone('improvements')}
-                  className="text-left bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-signal-amber/20 text-signal-amber flex items-center justify-center mb-3">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                      <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="2" />
-                      <line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  </div>
-                  <p className="font-display text-2xl font-bold text-white tabular leading-none">
-                    {stats.stageImpact.length > 0 ? stats.stageImpact[0].label : '—'}
-                  </p>
-                  <p className="text-xs text-mist mt-1.5">Improvements</p>
-                </button>
-
-                <button
-                  onClick={() => setExpandedZone('deepdive')}
-                  className="text-left bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-white/10 text-mist flex items-center justify-center mb-3">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="4" width="18" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
-                      <rect x="3" y="10" width="18" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
-                      <rect x="3" y="16" width="18" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
-                    </svg>
-                  </div>
-                  <p className="font-display text-2xl font-bold text-white tabular leading-none">
-                    {stats.mainBoardActive}
-                  </p>
-                  <p className="text-xs text-mist mt-1.5">Deep Dive</p>
-                </button>
+          {/* The landing view — four bold, tappable squares. Nothing else
+              lives here; every real number sits behind one of these
+              four, one tap away. */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setExpandedZone('attention')}
+              className="aspect-square flex flex-col items-center justify-center gap-3 bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
+            >
+              <div className="w-14 h-14 rounded-xl bg-signal-red/20 text-signal-red flex items-center justify-center">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2C10 2 8.5 3.5 8.5 5.5V6.5C6 7.5 4.5 10 4.5 13V17L2.5 19V20H21.5V19L19.5 17V13C19.5 10 18 7.5 15.5 6.5V5.5C15.5 3.5 14 2 12 2Z" fill="currentColor" />
+                  <path d="M9.5 21C9.5 22.1 10.6 23 12 23C13.4 23 14.5 22.1 14.5 21H9.5Z" fill="currentColor" />
+                </svg>
               </div>
-            </>
-          ) : (
-            <div className="space-y-5">
-              <button
-                onClick={() => setExpandedZone(null)}
-                className="flex items-center gap-1.5 text-sm text-signal-blue font-medium"
-              >
-                ← Back
-              </button>
+              <p className="font-display text-sm font-semibold text-white text-center">Needs Attention</p>
+            </button>
 
-              {expandedZone === 'attention' && (
-                <>
-                  <h1 className="font-display text-xl font-bold text-ink">Needs Attention</h1>
+            <button
+              onClick={() => setExpandedZone('turnrate')}
+              className="aspect-square flex flex-col items-center justify-center gap-3 bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
+            >
+              <div className="w-14 h-14 rounded-xl bg-signal-blue/20 text-signal-blue flex items-center justify-center">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+                  <path d="M4 18C4 12.5 8 8 12 8C16 8 20 12.5 20 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="12" y1="15" x2="15" y2="11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="12" cy="15" r="1.5" fill="currentColor" />
+                </svg>
+              </div>
+              <p className="font-display text-sm font-semibold text-white text-center">Turn Rate &amp; Cost</p>
+            </button>
 
-                  {stats.todaysPriorities.length > 0 ? (
+            <button
+              onClick={() => setExpandedZone('improvements')}
+              className="aspect-square flex flex-col items-center justify-center gap-3 bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
+            >
+              <div className="w-14 h-14 rounded-xl bg-signal-amber/20 text-signal-amber flex items-center justify-center">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+                  <path d="M4 12H17M17 12L12 7M17 12L12 17" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <p className="font-display text-sm font-semibold text-white text-center">Improvements</p>
+            </button>
+
+            <button
+              onClick={() => setExpandedZone('deepdive')}
+              className="aspect-square flex flex-col items-center justify-center gap-3 bg-ink rounded-2xl p-4 active:scale-[0.98] transition"
+            >
+              <div className="w-14 h-14 rounded-xl bg-white/10 text-mist flex items-center justify-center">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+                  <rect x="5" y="3" width="14" height="6" rx="1" stroke="currentColor" strokeWidth="2" />
+                  <rect x="5" y="10" width="14" height="6" rx="1" stroke="currentColor" strokeWidth="2" />
+                  <rect x="5" y="17" width="14" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
+                </svg>
+              </div>
+              <p className="font-display text-sm font-semibold text-white text-center">Deep Dive</p>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {expandedZone !== null &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center">
+            <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md modal-h-85 flex flex-col">
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
+                <h2 className="font-display text-lg font-semibold text-ink">
+                  {expandedZone === 'attention' && 'Needs Attention'}
+                  {expandedZone === 'turnrate' && 'Turn Rate & Cost'}
+                  {expandedZone === 'improvements' && 'Improvements'}
+                  {expandedZone === 'deepdive' && 'Deep Dive'}
+                </h2>
+                <ModalCloseButton onClick={() => setExpandedZone(null)} />
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                {expandedZone === 'attention' && (
+                  <>
+                    {stats.todaysPriorities.length > 0 ? (
+                      <div className="bg-ink rounded-2xl p-5">
+                        <div className="flex items-center justify-between mb-3 gap-2">
+                          <p className="font-display text-lg font-bold text-white leading-tight">
+                            {Math.min(3, stats.todaysPriorities.length)} Vehicle
+                            {Math.min(3, stats.todaysPriorities.length) === 1 ? '' : 's'} Need Attention Now
+                          </p>
+                          {stats.todaysPriorities.length > 3 && (
+                            <button
+                              onClick={() => setPrioritiesModalOpen(true)}
+                              className="text-mist text-xs flex-shrink-0 whitespace-nowrap"
+                            >
+                              +{stats.todaysPriorities.length - 3} more →
+                            </button>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          {stats.todaysPriorities.slice(0, 3).map((p) => {
+                            const cost = carryingCostSoFar(p.vehicle, newRatePerDay, usedRatePerDay);
+                            return (
+                              <button
+                                key={p.vehicle.id}
+                                onClick={() => onNavigateToVehicle?.(p.vehicle.id, p.vehicle.board)}
+                                disabled={!onNavigateToVehicle}
+                                className="w-full text-left bg-white/[0.07] rounded-lg p-3 active:scale-[0.99] transition"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="font-display font-semibold text-white text-sm truncate">
+                                    {vehicleShortLabel(p.vehicle)}
+                                  </p>
+                                  {cost > 0 && (
+                                    <span className="text-signal-amber font-display font-bold text-sm tabular flex-shrink-0">
+                                      ${cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-mist text-xs mt-0.5">{p.recommendedAction}</p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full bg-signal-green/10 border border-signal-green/30 rounded-2xl p-5">
+                        <p className="text-sm text-ink font-medium">🟢 Nothing needs immediate attention right now.</p>
+                      </div>
+                    )}
+
+                    {stats.boardWatchItems.length > 0 && (
+                      <div>
+                        <h2 className="font-display font-semibold text-ink text-sm mb-2">Board Watch</h2>
+                        <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                          {stats.boardWatchItems.map((item, i) => (
+                            <button
+                              key={i}
+                              onClick={() => onNavigateToVehicle?.(item.vehicleId, item.board)}
+                              disabled={!onNavigateToVehicle}
+                              className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
+                            >
+                              <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
+                              <p className="text-sm text-ink leading-snug">{item.text}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {expandedZone === 'turnrate' && (
+                  <>
                     <div className="bg-ink rounded-2xl p-5">
-                      <div className="flex items-center justify-between mb-3 gap-2">
-                        <p className="font-display text-lg font-bold text-white leading-tight">
-                          {Math.min(3, stats.todaysPriorities.length)} Vehicle
-                          {Math.min(3, stats.todaysPriorities.length) === 1 ? '' : 's'} Need Attention Now
-                        </p>
-                        {stats.todaysPriorities.length > 3 && (
+                      <div className="max-w-[200px] mx-auto">
+                        <TurnRateGauge
+                          value={simulatedTurnRate ?? stats.avgTurnTime}
+                          yellowDays={yellowDays}
+                          redDays={redDays}
+                        />
+                      </div>
+                      <p className="text-center font-display text-3xl font-bold text-white -mt-2">
+                        {formatDays(simulatedTurnRate ?? stats.avgTurnTime)}
+                      </p>
+                      <p className="text-center text-mist text-xs mb-4">
+                        {simulatedTurnRate !== null ? 'if turn rate were this' : 'average turn rate'}
+                      </p>
+
+                      {/* What-if simulator — dragging this slider moves the
+                          needle above and estimates the dollar impact,
+                          using this dealership's own configured rates.
+                          Framed clearly as an estimate, same as the
+                          Opportunity Meter — not a promise. */}
+                      <div className="border-t border-white/10 pt-4">
+                        <input
+                          type="range"
+                          min={0}
+                          max={14}
+                          step={0.5}
+                          value={simulatedTurnRate ?? stats.avgTurnTime ?? 0}
+                          onChange={(e) => setSimulatedTurnRate(parseFloat(e.target.value))}
+                          className="w-full accent-signal-blue"
+                        />
+                        <div className="flex items-center justify-between text-[10px] text-mist mb-2">
+                          <span>0 days</span>
+                          <span>14 days</span>
+                        </div>
+                        {simulatedTurnRate !== null && stats.avgTurnTime !== null && (
+                          (() => {
+                            const delta = simulatedTurnRate - stats.avgTurnTime;
+                            const impact = delta * stats.blendedDailyRate * stats.completedInRange;
+                            return (
+                              <p className="text-center text-sm">
+                                <span className={impact < 0 ? 'text-signal-green font-semibold' : impact > 0 ? 'text-signal-red font-semibold' : 'text-mist'}>
+                                  {Math.abs(impact) < 1
+                                    ? 'About the same as today'
+                                    : `~$${Math.abs(impact).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${impact < 0 ? 'saved' : 'more'} vs. today`}
+                                </span>
+                                <br />
+                                <span className="text-mist text-xs">
+                                  estimate across {stats.completedInRange} vehicle{stats.completedInRange === 1 ? '' : 's'} this period
+                                </span>
+                              </p>
+                            );
+                          })()
+                        )}
+                        {simulatedTurnRate !== null && (
                           <button
-                            onClick={() => setPrioritiesModalOpen(true)}
-                            className="text-mist text-xs flex-shrink-0 whitespace-nowrap"
+                            onClick={() => setSimulatedTurnRate(null)}
+                            className="w-full text-center text-signal-blue text-xs font-medium mt-2"
                           >
-                            +{stats.todaysPriorities.length - 3} more →
+                            Reset to current
                           </button>
                         )}
                       </div>
-                      <div className="space-y-2">
-                        {stats.todaysPriorities.slice(0, 3).map((p) => {
-                          const cost = carryingCostSoFar(p.vehicle, newRatePerDay, usedRatePerDay);
-                          return (
-                            <button
-                              key={p.vehicle.id}
-                              onClick={() => onNavigateToVehicle?.(p.vehicle.id, p.vehicle.board)}
-                              disabled={!onNavigateToVehicle}
-                              className="w-full text-left bg-white/[0.07] rounded-lg p-3 active:scale-[0.99] transition"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="font-display font-semibold text-white text-sm truncate">
-                                  {vehicleShortLabel(p.vehicle)}
-                                </p>
-                                {cost > 0 && (
-                                  <span className="text-signal-amber font-display font-bold text-sm tabular flex-shrink-0">
-                                    ${cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-mist text-xs mt-0.5">{p.recommendedAction}</p>
-                            </button>
-                          );
-                        })}
-                      </div>
                     </div>
-                  ) : (
-                    <div className="w-full bg-signal-green/10 border border-signal-green/30 rounded-2xl p-5">
-                      <p className="text-sm text-ink font-medium">🟢 Nothing needs immediate attention right now.</p>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <OverviewTile
+                        icon="⏱️"
+                        accent="blue"
+                        value={formatDays(stats.avgTurnTime)}
+                        label="Turn Rate"
+                        trend={
+                          stats.previousAvgTurnTime !== null && stats.avgTurnTime !== null
+                            ? {
+                                direction: stats.previousAvgTurnTime - stats.avgTurnTime > 0 ? 'up' : 'down',
+                                good: stats.previousAvgTurnTime - stats.avgTurnTime > 0,
+                                label:
+                                  Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime) < 0.1
+                                    ? 'Steady'
+                                    : `${Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime).toFixed(1)}d vs. last period`,
+                              }
+                            : undefined
+                        }
+                      />
+                      <OverviewTile
+                        icon="💰"
+                        accent="amber"
+                        value={`$${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                        label="Carrying Cost"
+                        sublabel={
+                          stats.opportunityAmount > 1
+                            ? `~$${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} avoidable`
+                            : undefined
+                        }
+                      />
+                      <OverviewTile
+                        icon="🚧"
+                        accent="red"
+                        value={bottleneckLabel()}
+                        label="Bottleneck"
+                        sublabel={stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} avg` : undefined}
+                      />
+                      <OverviewTile
+                        icon="⚠️"
+                        accent="red"
+                        value={String(stats.todaysPriorities.length)}
+                        label="Vehicles at Risk"
+                        onClick={stats.todaysPriorities.length > 0 ? () => setPrioritiesModalOpen(true) : undefined}
+                      />
                     </div>
-                  )}
 
-                  {stats.boardWatchItems.length > 0 && (
-                    <div>
-                      <h2 className="font-display font-semibold text-ink text-sm mb-2">Board Watch</h2>
-                      <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                        {stats.boardWatchItems.map((item, i) => (
-                          <button
-                            key={i}
-                            onClick={() => onNavigateToVehicle?.(item.vehicleId, item.board)}
-                            disabled={!onNavigateToVehicle}
-                            className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
-                          >
-                            <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
-                            <p className="text-sm text-ink leading-snug">{item.text}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {expandedZone === 'turnrate' && (
-                <>
-                  <h1 className="font-display text-xl font-bold text-ink">Turn Rate &amp; Cost</h1>
-
-                  <div className="bg-ink rounded-2xl p-5">
-                    <TurnRateGauge value={stats.avgTurnTime} yellowDays={yellowDays} redDays={redDays} />
-                    <p className="text-center font-display text-3xl font-bold text-white -mt-2">
-                      {formatDays(stats.avgTurnTime)}
-                    </p>
-                    <p className="text-center text-mist text-xs">average turn rate</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <OverviewTile
-                      icon="⏱️"
-                      accent="blue"
-                      value={formatDays(stats.avgTurnTime)}
-                      label="Turn Rate"
-                      trend={
-                        stats.previousAvgTurnTime !== null && stats.avgTurnTime !== null
-                          ? {
-                              direction: stats.previousAvgTurnTime - stats.avgTurnTime > 0 ? 'up' : 'down',
-                              good: stats.previousAvgTurnTime - stats.avgTurnTime > 0,
-                              label:
-                                Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime) < 0.1
-                                  ? 'Steady'
-                                  : `${Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime).toFixed(1)}d vs. last period`,
-                            }
-                          : undefined
-                      }
-                    />
-                    <OverviewTile
-                      icon="💰"
-                      accent="amber"
-                      value={`$${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
-                      label="Carrying Cost"
-                      sublabel={
-                        stats.opportunityAmount > 1
-                          ? `~$${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} avoidable`
-                          : undefined
-                      }
-                    />
-                    <OverviewTile
-                      icon="🚧"
-                      accent="red"
-                      value={bottleneckLabel()}
-                      label="Bottleneck"
-                      sublabel={stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} avg` : undefined}
-                    />
-                    <OverviewTile
-                      icon="⚠️"
-                      accent="red"
-                      value={String(stats.todaysPriorities.length)}
-                      label="Vehicles at Risk"
-                      onClick={stats.todaysPriorities.length > 0 ? () => setPrioritiesModalOpen(true) : undefined}
-                    />
-                  </div>
-
-                  {stats.whatsWorking.length > 0 && (
-                    <div>
-                      <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
-                        What can I show the owner?
-                      </p>
-                      <div className="bg-signal-green/5 border border-signal-green/20 rounded-lg divide-y divide-signal-green/10">
-                        {stats.whatsWorking.map((item, i) => (
-                          <div key={i} className="flex items-start gap-2.5 px-3 py-2.5">
-                            <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
-                            <p className="text-sm text-ink leading-snug">{item.text}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <CompletionsTrendChart data={stats.weeklyTrend} />
-                </>
-              )}
-
-              {expandedZone === 'improvements' && (
-                <>
-                  <h1 className="font-display text-xl font-bold text-ink">Improvements</h1>
-
-                  {stats.stageImpact.length > 0 && (
-                    <div>
-                      <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
-                        Where is the money stuck?
-                      </p>
-                      <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                        {stats.stageImpact.map((s) => {
-                          const target = vehicles.find((v) => !v.completed && v.board === 'main' && v.stage === s.key);
-                          return (
-                            <button
-                              key={s.key}
-                              onClick={() => target && onNavigateToVehicle?.(target.id, 'main')}
-                              disabled={!target || !onNavigateToVehicle}
-                              className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <span
-                                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                    s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
-                                  }`}
-                                />
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium text-ink truncate">{s.label}</p>
-                                  <p className="text-[11px] text-steel tabular">
-                                    {formatDays(s.avgDays)} avg · {s.waitingCount} waiting
-                                  </p>
-                                </div>
-                              </div>
-                              <span className="text-sm font-semibold text-ink tabular flex-shrink-0">
-                                ${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {mainBoardForDisplay && (
-                    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">
-                      {mainBoardForDisplay.stages.map((s, i) => {
-                        const health = stats.stageHealth.find((h) => h.key === s.key);
-                        const dotColor =
-                          s.key === 'inbound_trade_in'
-                            ? 'bg-gray-300'
-                            : health?.indicator === 'green'
-                            ? 'bg-signal-green'
-                            : health?.indicator === 'yellow'
-                            ? 'bg-signal-amber'
-                            : health?.indicator === 'red'
-                            ? 'bg-signal-red'
-                            : 'bg-gray-300';
-                        return (
-                          <div key={s.key} className="flex items-center flex-1 last:flex-none">
-                            <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                              <span className={`w-3 h-3 rounded-full ${dotColor}`} />
-                              <span className="text-[9px] text-steel text-center leading-tight max-w-[52px]">{s.label}</span>
+                    {stats.whatsWorking.length > 0 && (
+                      <div>
+                        <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
+                          What can I show the owner?
+                        </p>
+                        <div className="bg-signal-green/5 border border-signal-green/20 rounded-lg divide-y divide-signal-green/10">
+                          {stats.whatsWorking.map((item, i) => (
+                            <div key={i} className="flex items-start gap-2.5 px-3 py-2.5">
+                              <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
+                              <p className="text-sm text-ink leading-snug">{item.text}</p>
                             </div>
-                            {i < mainBoardForDisplay.stages.length - 1 && <div className="h-px bg-gray-200 flex-1 mx-1" />}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="border border-signal-amber rounded-lg p-3">
-                      <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Bottleneck stage</p>
-                      <p className="font-display font-semibold text-ink">{bottleneckLabel()}</p>
-                      <p className="text-xs text-steel tabular">
-                        {stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} average to get through` : '—'}
-                      </p>
-                    </div>
-                    <div className="border border-gray-200 rounded-lg p-3">
-                      <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Longest aging, active now</p>
-                      <p className="font-display font-semibold text-ink truncate">
-                        {stats.longestAging?.label || 'None'}
-                      </p>
-                      <p className="text-xs text-steel tabular">
-                        {stats.longestAging ? formatDays(stats.longestAging.days) : '—'}
-                      </p>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {expandedZone === 'deepdive' && (
-                <>
-                  <h1 className="font-display text-xl font-bold text-ink">Deep Dive</h1>
-
-                  {stats.stageHealth.length > 0 && (
-                    <div>
-                      <h2 className="font-display font-semibold text-ink text-sm mb-2">Stage Health — Main Board</h2>
-                      <div className="space-y-2">
-                        {stats.stageHealth.map((s) => (
-                          <div key={s.key} className="border border-gray-200 rounded-lg p-3">
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span
-                                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                                    s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
-                                  }`}
-                                />
-                                <p className="font-display font-semibold text-ink truncate">{s.label}</p>
-                              </div>
-                              <span className="font-display font-bold text-ink tabular flex-shrink-0">{s.health}</span>
-                            </div>
-                            <p className="text-xs text-steel tabular">
-                              {formatDays(s.avgDays)} average, active now · {s.waitingCount} waiting
-                            </p>
-                            {(s.approachingCount > 0 || s.exceedingCount > 0) && (
-                              <p className="text-xs tabular mt-0.5">
-                                {s.approachingCount > 0 && (
-                                  <span className="text-signal-amber font-medium">
-                                    {s.approachingCount} approaching target
-                                  </span>
-                                )}
-                                {s.approachingCount > 0 && s.exceedingCount > 0 && <span className="text-steel"> · </span>}
-                                {s.exceedingCount > 0 && (
-                                  <span className="text-signal-red font-medium">{s.exceedingCount} over target</span>
-                                )}
-                              </p>
-                            )}
-                            <p className="text-xs text-steel mt-1">{s.recommendation}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-asphalt rounded-lg p-3">
-                      <p className="text-2xl font-display font-bold text-ink tabular">{stats.mainBoardActive}</p>
-                      <p className="text-xs text-steel">Active on Main Board</p>
-                    </div>
-                    <div className="bg-asphalt rounded-lg p-3">
-                      <p className="text-2xl font-display font-bold text-ink tabular">{stats.addedInRange}</p>
-                      <p className="text-xs text-steel">Added in this period</p>
-                    </div>
-                    <div className="bg-asphalt rounded-lg p-3">
-                      <p className="text-2xl font-display font-bold text-ink tabular">{stats.completedInRange}</p>
-                      <p className="text-xs text-steel">Completed in this period</p>
-                    </div>
-                    <div className="bg-asphalt rounded-lg p-3">
-                      <p
-                        className={`text-2xl font-display font-bold tabular ${stats.agingRedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
-                      >
-                        {stats.agingRedCount}
-                      </p>
-                      <p className="text-xs text-steel">Aging red right now</p>
-                    </div>
-                    <div className="bg-asphalt rounded-lg p-3">
-                      <p
-                        className={`text-2xl font-display font-bold tabular ${stats.damagedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
-                      >
-                        {stats.damagedCount}
-                      </p>
-                      <p className="text-xs text-steel">
-                        Flagged with damage{stats.damageRate !== null && ` (${stats.damageRate.toFixed(0)}%)`}
-                      </p>
-                    </div>
-                    <div className="bg-asphalt rounded-lg p-3">
-                      <p
-                        className={`text-2xl font-display font-bold tabular ${stats.overdueLoaners > 0 ? 'text-signal-red' : 'text-ink'}`}
-                      >
-                        {stats.overdueLoaners}
-                      </p>
-                      <p className="text-xs text-steel">Loaners overdue</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-asphalt rounded-lg p-3">
-                      <p className="text-2xl font-display font-bold text-ink tabular">
-                        {stats.avgNewCarryingCost !== null
-                          ? `$${stats.avgNewCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                          : '—'}
-                      </p>
-                      <p className="text-xs text-steel">Avg. cost — new vehicles</p>
-                    </div>
-                    <div className="bg-asphalt rounded-lg p-3">
-                      <p className="text-2xl font-display font-bold text-ink tabular">
-                        {stats.avgUsedCarryingCost !== null
-                          ? `$${stats.avgUsedCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                          : '—'}
-                      </p>
-                      <p className="text-xs text-steel">Avg. cost — used vehicles</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-ink rounded-xl p-5 text-white">
-                    <p className="text-xs text-mist uppercase tracking-wide mb-1">Avg. Transit Time (Inbound → Service)</p>
-                    <p className="font-display text-2xl font-semibold">{formatDays(stats.avgTransitTime)}</p>
-                    <div className="flex gap-4 mt-2 text-xs text-mist">
-                      <span>Fastest turn: {formatDays(stats.fastestTurn)}</span>
-                      <span>Slowest turn: {formatDays(stats.slowestTurn)}</span>
-                    </div>
-                  </div>
-
-                  {boards.map((board) => (
-                    <div key={board.id}>
-                      <h2 className="font-display font-semibold text-ink text-sm mb-2">{board.label}</h2>
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        <div className="grid grid-cols-3 bg-asphalt text-[11px] uppercase tracking-wide text-steel px-3 py-2">
-                          <span>Stage</span>
-                          <span className="text-center">Now</span>
-                          <span className="text-right">Avg. time</span>
+                          ))}
                         </div>
-                        {board.stages.map((stage) => (
-                          <div
-                            key={stage.key}
-                            className="grid grid-cols-3 px-3 py-2 border-t border-gray-100 text-sm items-center"
-                          >
-                            <span className="text-ink">{stage.label}</span>
-                            <span className="text-center tabular text-steel">
-                              {stats.currentCounts.get(`${board.key}::${stage.key}`) ?? 0}
-                            </span>
-                            <span className="text-right tabular text-steel">
-                              {formatDays(stats.avgDaysFor(board.key, stage.key))}
-                            </span>
-                          </div>
-                        ))}
+                      </div>
+                    )}
+
+                    <CompletionsTrendChart data={stats.weeklyTrend} />
+                  </>
+                )}
+
+                {expandedZone === 'improvements' && (
+                  <>
+                    {stats.stageImpact.length > 0 && (
+                      <div>
+                        <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
+                          Where is the money stuck?
+                        </p>
+                        <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                          {stats.stageImpact.map((s) => {
+                            const target = vehicles.find((v) => !v.completed && v.board === 'main' && v.stage === s.key);
+                            return (
+                              <button
+                                key={s.key}
+                                onClick={() => target && onNavigateToVehicle?.(target.id, 'main')}
+                                disabled={!target || !onNavigateToVehicle}
+                                className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span
+                                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                      s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
+                                    }`}
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-ink truncate">{s.label}</p>
+                                    <p className="text-[11px] text-steel tabular">
+                                      {formatDays(s.avgDays)} avg · {s.waitingCount} waiting
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-sm font-semibold text-ink tabular flex-shrink-0">
+                                  ${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {mainBoardForDisplay && (
+                      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                        {mainBoardForDisplay.stages.map((s, i) => {
+                          const health = stats.stageHealth.find((h) => h.key === s.key);
+                          const dotColor =
+                            s.key === 'inbound_trade_in'
+                              ? 'bg-gray-300'
+                              : health?.indicator === 'green'
+                              ? 'bg-signal-green'
+                              : health?.indicator === 'yellow'
+                              ? 'bg-signal-amber'
+                              : health?.indicator === 'red'
+                              ? 'bg-signal-red'
+                              : 'bg-gray-300';
+                          return (
+                            <div key={s.key} className="flex items-center flex-1 last:flex-none">
+                              <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                                <span className={`w-3 h-3 rounded-full ${dotColor}`} />
+                                <span className="text-[9px] text-steel text-center leading-tight max-w-[52px]">{s.label}</span>
+                              </div>
+                              {i < mainBoardForDisplay.stages.length - 1 && <div className="h-px bg-gray-200 flex-1 mx-1" />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="border border-signal-amber rounded-lg p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Bottleneck stage</p>
+                        <p className="font-display font-semibold text-ink">{bottleneckLabel()}</p>
+                        <p className="text-xs text-steel tabular">
+                          {stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} average to get through` : '—'}
+                        </p>
+                      </div>
+                      <div className="border border-gray-200 rounded-lg p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Longest aging, active now</p>
+                        <p className="font-display font-semibold text-ink truncate">
+                          {stats.longestAging?.label || 'None'}
+                        </p>
+                        <p className="text-xs text-steel tabular">
+                          {stats.longestAging ? formatDays(stats.longestAging.days) : '—'}
+                        </p>
                       </div>
                     </div>
-                  ))}
-                </>
-              )}
+                  </>
+                )}
+
+                {expandedZone === 'deepdive' && (
+                  <>
+                    {stats.stageHealth.length > 0 && (
+                      <div>
+                        <h2 className="font-display font-semibold text-ink text-sm mb-2">Stage Health — Main Board</h2>
+                        <div className="space-y-2">
+                          {stats.stageHealth.map((s) => (
+                            <div key={s.key} className="border border-gray-200 rounded-lg p-3">
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span
+                                    className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                                      s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
+                                    }`}
+                                  />
+                                  <p className="font-display font-semibold text-ink truncate">{s.label}</p>
+                                </div>
+                                <span className="font-display font-bold text-ink tabular flex-shrink-0">{s.health}</span>
+                              </div>
+                              <p className="text-xs text-steel tabular">
+                                {formatDays(s.avgDays)} average, active now · {s.waitingCount} waiting
+                              </p>
+                              {(s.approachingCount > 0 || s.exceedingCount > 0) && (
+                                <p className="text-xs tabular mt-0.5">
+                                  {s.approachingCount > 0 && (
+                                    <span className="text-signal-amber font-medium">
+                                      {s.approachingCount} approaching target
+                                    </span>
+                                  )}
+                                  {s.approachingCount > 0 && s.exceedingCount > 0 && <span className="text-steel"> · </span>}
+                                  {s.exceedingCount > 0 && (
+                                    <span className="text-signal-red font-medium">{s.exceedingCount} over target</span>
+                                  )}
+                                </p>
+                              )}
+                              <p className="text-xs text-steel mt-1">{s.recommendation}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-asphalt rounded-lg p-3">
+                        <p className="text-2xl font-display font-bold text-ink tabular">{stats.mainBoardActive}</p>
+                        <p className="text-xs text-steel">Active on Main Board</p>
+                      </div>
+                      <div className="bg-asphalt rounded-lg p-3">
+                        <p className="text-2xl font-display font-bold text-ink tabular">{stats.addedInRange}</p>
+                        <p className="text-xs text-steel">Added in this period</p>
+                      </div>
+                      <div className="bg-asphalt rounded-lg p-3">
+                        <p className="text-2xl font-display font-bold text-ink tabular">{stats.completedInRange}</p>
+                        <p className="text-xs text-steel">Completed in this period</p>
+                      </div>
+                      <div className="bg-asphalt rounded-lg p-3">
+                        <p
+                          className={`text-2xl font-display font-bold tabular ${stats.agingRedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
+                        >
+                          {stats.agingRedCount}
+                        </p>
+                        <p className="text-xs text-steel">Aging red right now</p>
+                      </div>
+                      <div className="bg-asphalt rounded-lg p-3">
+                        <p
+                          className={`text-2xl font-display font-bold tabular ${stats.damagedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
+                        >
+                          {stats.damagedCount}
+                        </p>
+                        <p className="text-xs text-steel">
+                          Flagged with damage{stats.damageRate !== null && ` (${stats.damageRate.toFixed(0)}%)`}
+                        </p>
+                      </div>
+                      <div className="bg-asphalt rounded-lg p-3">
+                        <p
+                          className={`text-2xl font-display font-bold tabular ${stats.overdueLoaners > 0 ? 'text-signal-red' : 'text-ink'}`}
+                        >
+                          {stats.overdueLoaners}
+                        </p>
+                        <p className="text-xs text-steel">Loaners overdue</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-asphalt rounded-lg p-3">
+                        <p className="text-2xl font-display font-bold text-ink tabular">
+                          {stats.avgNewCarryingCost !== null
+                            ? `$${stats.avgNewCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                            : '—'}
+                        </p>
+                        <p className="text-xs text-steel">Avg. cost — new vehicles</p>
+                      </div>
+                      <div className="bg-asphalt rounded-lg p-3">
+                        <p className="text-2xl font-display font-bold text-ink tabular">
+                          {stats.avgUsedCarryingCost !== null
+                            ? `$${stats.avgUsedCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                            : '—'}
+                        </p>
+                        <p className="text-xs text-steel">Avg. cost — used vehicles</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-ink rounded-xl p-5 text-white">
+                      <p className="text-xs text-mist uppercase tracking-wide mb-1">Avg. Transit Time (Inbound → Service)</p>
+                      <p className="font-display text-2xl font-semibold">{formatDays(stats.avgTransitTime)}</p>
+                      <div className="flex gap-4 mt-2 text-xs text-mist">
+                        <span>Fastest turn: {formatDays(stats.fastestTurn)}</span>
+                        <span>Slowest turn: {formatDays(stats.slowestTurn)}</span>
+                      </div>
+                    </div>
+
+                    {boards.map((board) => (
+                      <div key={board.id}>
+                        <h2 className="font-display font-semibold text-ink text-sm mb-2">{board.label}</h2>
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                          <div className="grid grid-cols-3 bg-asphalt text-[11px] uppercase tracking-wide text-steel px-3 py-2">
+                            <span>Stage</span>
+                            <span className="text-center">Now</span>
+                            <span className="text-right">Avg. time</span>
+                          </div>
+                          {board.stages.map((stage) => (
+                            <div
+                              key={stage.key}
+                              className="grid grid-cols-3 px-3 py-2 border-t border-gray-100 text-sm items-center"
+                            >
+                              <span className="text-ink">{stage.label}</span>
+                              <span className="text-center tabular text-steel">
+                                {stats.currentCounts.get(`${board.key}::${stage.key}`) ?? 0}
+                              </span>
+                              <span className="text-right tabular text-steel">
+                                {formatDays(stats.avgDaysFor(board.key, stage.key))}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {prioritiesModalOpen && (
         <TodaysPrioritiesModal
