@@ -795,74 +795,49 @@ export default function AnalyticsPage({
     // tracking a trend over time than the raw count alone.
     const damageRate = vehicles.length > 0 ? (damagedCount / vehicles.length) * 100 : null;
 
-    // ── Action Center issues ─────────────────────────────────────────────
-    // Deliberately mixes two different kinds of problems — a single
-    // vehicle that's fallen behind, and a whole category backing up
-    // (a stage, or titles) — ranked together by real dollar impact,
-    // rather than only ever surfacing individual cars. A stage quietly
-    // backing up can matter more than any one vehicle in it.
+    // ── Action Center vehicles ──────────────────────────────────────────
+    // Always surface the three highest-priority individual vehicles here.
+    // Broader operational issues such as title delays and stage bottlenecks
+    // remain visible in How to Save More, Stage Health, and the KPI row.
+    // This keeps Action Center concrete: every card is a vehicle a manager
+    // can click, find on the board, and act on immediately.
     type ActionIssue = {
       title: string;
       badge: string;
       sublabel: string;
       cost: number;
       actionLabel: string;
-      vehicleId?: string;
-      board?: string;
+      vehicleId: string;
+      board: string;
+      score: number;
+      reason: string;
+      recommendedAction: string;
     };
-    const issueCandidates: ActionIssue[] = [];
 
-    if (todaysPriorities.length > 0) {
-      const top = todaysPriorities[0];
-      const cost = carryingCostSoFar(top.vehicle, newRatePerDay, usedRatePerDay);
-      const daysInStage = (Date.now() - new Date(top.vehicle.stage_entered_at).getTime()) / 86400000;
-      const board = boards.find((b) => b.key === top.vehicle.board);
-      const stage = board?.stages.find((s) => s.key === top.vehicle.stage);
-      issueCandidates.push({
-        title: vehicleShortLabel(top.vehicle),
-        badge: `${daysInStage.toFixed(1)} Days`,
-        sublabel: `${board?.label ?? top.vehicle.board}${stage ? ` — ${stage.label}` : ''}`,
-        cost,
-        actionLabel: 'View Vehicle',
-        vehicleId: top.vehicle.id,
-        board: top.vehicle.board,
+    const actionIssues: ActionIssue[] = priorityResults
+      .slice(0, 3)
+      .map((result) => {
+        const vehicle = result.vehicle;
+        const board = boards.find((b) => b.key === vehicle.board);
+        const stage = board?.stages.find((s) => s.key === vehicle.stage);
+        const daysInStage = Math.max(
+          0,
+          (Date.now() - new Date(vehicle.stage_entered_at).getTime()) / 86400000
+        );
+
+        return {
+          title: vehicleShortLabel(vehicle),
+          badge: `${daysInStage.toFixed(1)} Days`,
+          sublabel: `${board?.label ?? vehicle.board}${stage ? ` — ${stage.label}` : ''}`,
+          cost: carryingCostSoFar(vehicle, newRatePerDay, usedRatePerDay),
+          actionLabel: 'View Vehicle',
+          vehicleId: vehicle.id,
+          board: vehicle.board,
+          score: result.score,
+          reason: result.reasons[0]?.label ?? 'Highest-priority active vehicle',
+          recommendedAction: result.recommendedAction,
+        };
       });
-    }
-
-    const waitingVehicles = vehicles.filter((v) => !v.completed && v.title_status === 'waiting' && v.title_status_updated_at);
-    if (waitingVehicles.length > 0) {
-      const avgWaitDays =
-        waitingVehicles.reduce((sum, v) => sum + (Date.now() - new Date(v.title_status_updated_at!).getTime()) / 86400000, 0) /
-        waitingVehicles.length;
-      issueCandidates.push({
-        title: 'Waiting on Title',
-        badge: `Avg ${avgWaitDays.toFixed(1)} Days`,
-        sublabel: `${waitingVehicles.length} vehicle${waitingVehicles.length === 1 ? '' : 's'} — paperwork needed`,
-        cost: waitingVehicles.length * blendedDailyRate,
-        actionLabel: 'View Vehicles',
-        vehicleId: waitingVehicles[0].id,
-        board: waitingVehicles[0].board,
-      });
-    }
-
-    if (bottleneck) {
-      const bLabel = boards.find((b) => b.key === bottleneck.board)?.stages.find((s) => s.key === bottleneck.stage)?.label ?? bottleneck.stage;
-      const impact = stageImpact.find((s) => s.key === bottleneck.stage);
-      const target = vehicles.find((v) => !v.completed && v.board === bottleneck.board && v.stage === bottleneck.stage);
-      if (impact && target) {
-        issueCandidates.push({
-          title: `${bLabel} Bottleneck`,
-          badge: `Avg ${impact.avgDays !== null ? impact.avgDays.toFixed(1) : '—'} Days`,
-          sublabel: `Target ${yellowDays} Days · ${impact.waitingCount} vehicle${impact.waitingCount === 1 ? '' : 's'}`,
-          cost: impact.cost,
-          actionLabel: 'View Board',
-          vehicleId: target.id,
-          board: bottleneck.board,
-        });
-      }
-    }
-
-    const actionIssues = issueCandidates.sort((a, b) => b.cost - a.cost).slice(0, 3);
 
     // ── Money Snapshot extras ────────────────────────────────────────────
     const monthlyProjection = blendedDailyRate * mainBoardActive * 30;
@@ -1277,7 +1252,10 @@ ${stats.todaysPriorities.length > 0 ? `
             <section className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)]">
               <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="mb-4 flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-signal-red">Act Now</p><h2 className="font-display text-xl font-bold text-ink">Action Center</h2><p className="text-xs text-steel">Only the highest-impact items are shown here.</p></div><button onClick={() => setPrioritiesModalOpen(true)} className="text-xs font-semibold text-signal-blue">View all issues →</button></div>
-                {stats.actionIssues.length > 0 ? <div className="grid gap-3 md:grid-cols-3">{stats.actionIssues.map((issue, i) => <article key={i} className={`rounded-xl border p-4 ${i === 0 ? 'border-red-200 bg-red-50/60' : 'border-amber-200 bg-amber-50/60'}`}><div className="flex items-center justify-between gap-2"><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${i === 0 ? 'bg-red-100 text-signal-red' : 'bg-amber-100 text-amber-700'}`}>{i === 0 ? 'Critical' : 'High'}</span><span className="text-xs font-semibold text-steel">{issue.badge}</span></div><h3 className="mt-3 font-display text-base font-bold text-ink">{issue.title}</h3><p className="mt-1 min-h-[32px] text-xs text-steel">{issue.sublabel}</p><p className="mt-4 text-xs text-steel">Estimated impact</p><p className="font-display text-2xl font-bold text-ink">${issue.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p><button onClick={() => issue.vehicleId && issue.board && onNavigateToVehicle?.(issue.vehicleId, issue.board)} disabled={!issue.vehicleId || !onNavigateToVehicle} className="mt-4 w-full rounded-lg border border-signal-blue px-3 py-2 text-xs font-semibold text-signal-blue disabled:opacity-50">{issue.actionLabel}</button></article>)}</div> : <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm font-medium text-emerald-800">Everything is flowing normally. No urgent issues right now.</div>}
+                {stats.actionIssues.length > 0 ? <div className="grid gap-3 md:grid-cols-3">{stats.actionIssues.map((issue, i) => {
+                  const severity = issue.score >= 60 ? 'Critical' : issue.score >= 35 ? 'High' : 'Watch';
+                  const isCritical = severity === 'Critical';
+                  return <article key={issue.vehicleId} className={`flex h-full flex-col rounded-xl border p-4 ${isCritical ? 'border-red-200 bg-red-50/60' : 'border-amber-200 bg-amber-50/60'}`}><div className="flex items-center justify-between gap-2"><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${isCritical ? 'bg-red-100 text-signal-red' : 'bg-amber-100 text-amber-700'}`}>{severity} · {issue.score}</span><span className="text-xs font-semibold text-steel">{issue.badge}</span></div><h3 className="mt-3 font-display text-base font-bold text-ink">{issue.title}</h3><p className="mt-1 text-xs text-steel">{issue.sublabel}</p><div className="mt-3 rounded-lg bg-white/70 p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-steel">Why it is here</p><p className="mt-1 text-xs font-medium text-ink">{issue.reason}</p><p className="mt-2 text-xs text-steel">{issue.recommendedAction}</p></div><div className="mt-auto pt-4"><p className="text-xs text-steel">Current carrying cost</p><p className="font-display text-2xl font-bold text-ink">${issue.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p><button onClick={() => onNavigateToVehicle?.(issue.vehicleId, issue.board)} disabled={!onNavigateToVehicle} className="mt-4 w-full rounded-lg border border-signal-blue px-3 py-2 text-xs font-semibold text-signal-blue disabled:opacity-50">{issue.actionLabel}</button></div></article>})}</div> : <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm font-medium text-emerald-800">Everything is flowing normally. No active vehicles need attention right now.</div>}
               </div>
 
               <aside className="rounded-2xl bg-gradient-to-br from-[#ECFDF3] to-white p-5 shadow-sm ring-1 ring-emerald-100">
