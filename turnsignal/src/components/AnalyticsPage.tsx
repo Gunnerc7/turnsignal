@@ -1144,6 +1144,10 @@ ${stats.todaysPriorities.length > 0 ? `
     ? boards.find((b) => b.key === stats.bottleneck?.board)?.stages.find((s) => s.key === stats.bottleneck?.stage)?.label ?? stats.bottleneck.stage
     : 'No bottleneck';
 
+  const slowestStageDisplay = stats.slowestStage
+    ? boards.find((b) => b.key === stats.slowestStage?.board)?.stages.find((s) => s.key === stats.slowestStage?.stage)?.label ?? stats.slowestStage.stage
+    : '';
+
   const turnTrend =
     stats.avgTurnTime !== null && stats.previousAvgTurnTime !== null
       ? stats.previousAvgTurnTime - stats.avgTurnTime
