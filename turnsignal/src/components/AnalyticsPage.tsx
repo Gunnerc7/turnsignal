@@ -847,6 +847,10 @@ export default function AnalyticsPage({
     // Same underlying data as the Action Center issues above, reframed as
     // a specific action with a dollar estimate attached, instead of just
     // stating the problem and leaving the math to whoever's reading it.
+    const waitingVehicles = vehicles.filter(
+      (v) => !v.completed && v.title_status === 'waiting' && v.title_status_updated_at
+    );
+
     const saveMoreTips: { icon: string; title: string; text: string; actionLabel?: string; vehicleId?: string; board?: string }[] = [];
     if (bottleneck) {
       const bLabel = boards.find((b) => b.key === bottleneck.board)?.stages.find((s) => s.key === bottleneck.stage)?.label ?? bottleneck.stage;
