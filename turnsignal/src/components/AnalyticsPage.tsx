@@ -271,7 +271,7 @@ export default function AnalyticsPage({
     // boards have naturally long stays (e.g. ~30 days for a service
     // loaner) that aren't a recon bottleneck, just how that board
     // normally works.
-    const bottleneck =
+    const slowestStage =
       Array.from(stageDurations.entries())
         .map(([key, arr]) => {
           const [board, stage] = key.split('::');
@@ -280,6 +280,19 @@ export default function AnalyticsPage({
         })
         .filter((entry) => entry.board === 'main' && entry.stage !== 'inbound_trade_in')
         .sort((a, b) => b.avgDays - a.avgDays)[0] ?? null;
+
+    // A stage is only called a true bottleneck when it is slower than the
+    // dealership's own red aging target. If everything is within target,
+    // we still show the slowest stage for context without falsely labeling
+    // it as a problem.
+    const bottleneck =
+      slowestStage &&
+      (() => {
+        const thresholds = getThresholds(slowestStage.board, slowestStage.stage, yellowDays, redDays);
+        return thresholds && slowestStage.avgDays > thresholds.red;
+      })()
+        ? slowestStage
+        : null;
 
     // Turn Rate: Service → Price for Lot. Inbound time is excluded on
     // purpose — that's largely a pickup/transit wait, not something the
@@ -368,7 +381,7 @@ export default function AnalyticsPage({
         .map((v) => {
           const anchor = v.recon_started_at ?? v.stage_entered_at;
           const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
-          return { label: vehicleLabel(v), days };
+          return { label: vehicleLabel(v), days, vehicleId: v.id, board: v.board };
         })
         .sort((a, b) => b.days - a.days)[0] ?? null;
 
@@ -620,24 +633,29 @@ export default function AnalyticsPage({
     // dollar impact — the two were answering closely related questions
     // ("how's this stage doing" and "what's it costing") as two separate
     // sections, which just meant looking in two places for one picture.
-    const stageImpact = (mainBoard?.stages ?? [])
-      .filter((s) => s.key !== 'inbound_trade_in')
-      .map((s) => {
-        const health = stageHealth.find((h) => h.key === s.key);
-        const cost = vehicles
-          .filter((v) => !v.completed && v.board === 'main' && v.stage === s.key)
-          .reduce((sum, v) => sum + carryingCostSoFar(v, newRatePerDay, usedRatePerDay), 0);
-        return {
-          key: s.key,
-          label: s.label,
-          avgDays: health?.avgDays ?? null,
-          waitingCount: health?.waitingCount ?? 0,
-          cost,
-          indicator: health?.indicator ?? ('green' as 'green' | 'yellow' | 'red'),
-        };
-      })
-      .filter((s) => s.waitingCount > 0 || s.cost > 0)
-      .sort((a, b) => b.cost - a.cost);
+    const stageImpact = (mainBoard?.stages ?? []).map((s) => {
+      const health = stageHealth.find((h) => h.key === s.key);
+      const activeVehicles = vehicles.filter((v) => !v.completed && v.board === 'main' && v.stage === s.key);
+      const cost = activeVehicles.reduce(
+        (sum, v) => sum + carryingCostSoFar(v, newRatePerDay, usedRatePerDay),
+        0
+      );
+      const thresholds = getThresholds('main', s.key, yellowDays, redDays);
+      const targetDays = thresholds?.red ?? null;
+      const avgDays = health?.avgDays ?? avgDaysFor('main', s.key);
+      return {
+        key: s.key,
+        label: s.label,
+        avgDays,
+        waitingCount: activeVehicles.length,
+        cost,
+        targetDays,
+        differenceDays: avgDays !== null && targetDays !== null ? avgDays - targetDays : null,
+        indicator: health?.indicator ?? ('green' as 'green' | 'yellow' | 'red'),
+        firstVehicleId: activeVehicles[0]?.id,
+        firstVehicleBoard: activeVehicles[0]?.board,
+      };
+    });
 
     // ── Board Watch ──────────────────────────────────────────────────────
     // Deliberately narrow — Stage Health already owns Main Board, so this
@@ -854,7 +872,7 @@ export default function AnalyticsPage({
     // Same underlying data as the Action Center issues above, reframed as
     // a specific action with a dollar estimate attached, instead of just
     // stating the problem and leaving the math to whoever's reading it.
-    const saveMoreTips: { icon: string; title: string; text: string }[] = [];
+    const saveMoreTips: { icon: string; title: string; text: string; actionLabel?: string; vehicleId?: string; board?: string }[] = [];
     if (bottleneck) {
       const bLabel = boards.find((b) => b.key === bottleneck.board)?.stages.find((s) => s.key === bottleneck.stage)?.label ?? bottleneck.stage;
       const count = stageImpact.find((s) => s.key === bottleneck.stage)?.waitingCount ?? 0;
@@ -863,6 +881,9 @@ export default function AnalyticsPage({
           icon: '⏱️',
           title: `Reduce ${bLabel} Time`,
           text: `If ${bLabel} averaged 1 day faster, that's about $${(count * blendedDailyRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}/month.`,
+          actionLabel: `View ${bLabel}`,
+          vehicleId: vehicles.find((v) => !v.completed && v.board === bottleneck.board && v.stage === bottleneck.stage)?.id,
+          board: bottleneck.board,
         });
       }
     }
@@ -871,6 +892,9 @@ export default function AnalyticsPage({
         icon: '📄',
         title: 'Speed Up Titles',
         text: `Clearing ${waitingVehicles.length} pending title${waitingVehicles.length === 1 ? '' : 's'} could save about $${(waitingVehicles.length * blendedDailyRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}/month.`,
+        actionLabel: 'View title vehicle',
+        vehicleId: waitingVehicles[0]?.id,
+        board: waitingVehicles[0]?.board,
       });
     }
     const secondStage = stageImpact.filter((s) => s.key !== bottleneck?.stage)[0];
@@ -878,7 +902,10 @@ export default function AnalyticsPage({
       saveMoreTips.push({
         icon: '📸',
         title: `Watch ${secondStage.label}`,
-        text: `${secondStage.waitingCount} vehicle${secondStage.waitingCount === 1 ? '' : 's'} here — about $${secondStage.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })} in carrying cost so far.`,
+        text: `${secondStage.waitingCount} vehicle${secondStage.waitingCount === 1 ? '' : 's'} here — about $${secondStage.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })} in current carrying cost.`,
+        actionLabel: `View ${secondStage.label}`,
+        vehicleId: secondStage.firstVehicleId,
+        board: secondStage.firstVehicleBoard,
       });
     }
 
@@ -890,6 +917,7 @@ export default function AnalyticsPage({
       currentCounts,
       avgDaysFor,
       bottleneck,
+      slowestStage,
       avgTurnTime,
       previousAvgTurnTime,
       fastestTurn,
@@ -1232,8 +1260,13 @@ ${stats.todaysPriorities.length > 0 ? `
               <div className="rounded-2xl bg-[#2A4C90] p-5 text-white shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wider text-blue-100">Current Bottleneck</p>
                 <p className="mt-4 font-display text-2xl font-bold">{bottleneckDisplay}</p>
-                <p className="mt-1 text-sm text-blue-100">{stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} average` : 'No completed-stage data yet'}</p>
-                <div className="mt-5 rounded-xl bg-white/10 p-3"><p className="text-[11px] text-blue-100">Longest active vehicle</p><p className="truncate text-sm font-semibold">{stats.longestAging?.label ?? 'None'}</p></div>
+                <p className="mt-1 text-sm text-blue-100">{stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} average — over target` : stats.slowestStage ? `${slowestStageDisplay} is slowest at ${formatDays(stats.slowestStage.avgDays)}, but within target` : 'No completed-stage data yet'}</p>
+                <button
+                  type="button"
+                  onClick={() => stats.longestAging && onNavigateToVehicle?.(stats.longestAging.vehicleId, stats.longestAging.board)}
+                  disabled={!stats.longestAging || !onNavigateToVehicle}
+                  className="mt-5 w-full rounded-xl bg-white/10 p-3 text-left transition hover:bg-white/15 disabled:cursor-default"
+                ><p className="text-[11px] text-blue-100">Longest active vehicle</p><p className="truncate text-sm font-semibold">{stats.longestAging?.label ?? 'None'}</p>{stats.longestAging && <p className="mt-1 text-[10px] text-blue-200">Open vehicle →</p>}</button>
               </div>
             </section>
 
@@ -1248,15 +1281,15 @@ ${stats.todaysPriorities.length > 0 ? `
                 <h2 className="mt-1 font-display text-xl font-bold text-ink">How to Save More</h2>
                 <p className="mt-3 font-display text-4xl font-bold text-signal-green">${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
                 <p className="text-xs text-steel">Estimated opportunity based on this dealer's own rates and targets.</p>
-                <div className="mt-4 space-y-3">{stats.saveMoreTips.slice(0, 3).map((tip, i) => <div key={i} className="rounded-xl bg-white p-3 ring-1 ring-emerald-100"><div className="flex gap-2"><span>{tip.icon}</span><div><p className="text-sm font-semibold text-ink">{tip.title}</p><p className="mt-0.5 text-xs leading-snug text-steel">{tip.text}</p></div></div></div>)}</div>
+                <div className="mt-4 space-y-3">{stats.saveMoreTips.slice(0, 3).map((tip, i) => <button type="button" key={i} onClick={() => tip.vehicleId && tip.board && onNavigateToVehicle?.(tip.vehicleId, tip.board)} disabled={!tip.vehicleId || !tip.board || !onNavigateToVehicle} className="w-full rounded-xl bg-white p-3 text-left ring-1 ring-emerald-100 transition hover:-translate-y-0.5 hover:shadow-sm disabled:transform-none disabled:cursor-default"><div className="flex gap-2"><span>{tip.icon}</span><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-ink">{tip.title}</p><p className="mt-0.5 text-xs leading-snug text-steel">{tip.text}</p>{tip.actionLabel && tip.vehicleId && <p className="mt-2 text-[11px] font-semibold text-signal-green">{tip.actionLabel} →</p>}</div></div></button>)}</div>
               </aside>
             </section>
 
-            {stats.stageImpact.length > 0 && <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5"><div className="mb-4"><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-signal-blue">Performance</p><h2 className="font-display text-xl font-bold text-ink">Stage Health</h2><p className="text-xs text-steel">See the workflow from left to right and find where inventory is slowing.</p></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{stats.stageImpact.map((s) => { const vsTarget = s.avgDays !== null ? s.avgDays - yellowDays : null; return <div key={s.key} className={`rounded-xl border p-4 ${s.indicator === 'red' ? 'border-red-200 bg-red-50/50' : s.indicator === 'yellow' ? 'border-amber-200 bg-amber-50/50' : 'border-emerald-200 bg-emerald-50/40'}`}><div className="flex items-center justify-between"><span className={`h-2.5 w-2.5 rounded-full ${s.indicator === 'red' ? 'bg-signal-red' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-green'}`} /><span className="text-xs font-semibold text-steel">{s.waitingCount} waiting</span></div><h3 className="mt-3 font-display font-bold text-ink">{s.label}</h3><p className="mt-2 font-display text-2xl font-bold text-ink">{formatDays(s.avgDays)}</p><p className={`text-xs font-semibold ${vsTarget === null ? 'text-steel' : vsTarget > 0 ? 'text-signal-red' : 'text-signal-green'}`}>{vsTarget === null ? 'No target comparison' : `${vsTarget > 0 ? '+' : ''}${vsTarget.toFixed(1)} days vs target`}</p><div className="mt-3 border-t border-black/5 pt-3"><p className="text-[10px] uppercase tracking-wide text-steel">Carrying cost impact</p><p className="font-display text-lg font-bold text-ink">${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div></div>})}</div></section>}
+            {stats.stageImpact.length > 0 && <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5"><div className="mb-4"><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-signal-blue">Performance</p><h2 className="font-display text-xl font-bold text-ink">Stage Health</h2><p className="text-xs text-steel">See the workflow from left to right and find where inventory is slowing.</p></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{stats.stageImpact.map((s) => { const vsTarget = s.differenceDays; return <div key={s.key} className={`rounded-xl border p-4 ${s.indicator === 'red' ? 'border-red-200 bg-red-50/50' : s.indicator === 'yellow' ? 'border-amber-200 bg-amber-50/50' : 'border-emerald-200 bg-emerald-50/40'}`}><div className="flex items-center justify-between"><span className={`h-2.5 w-2.5 rounded-full ${s.indicator === 'red' ? 'bg-signal-red' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-green'}`} /><span className="text-xs font-semibold text-steel">{s.waitingCount} waiting</span></div><h3 className="mt-3 font-display font-bold text-ink">{s.label}</h3><p className="mt-2 font-display text-2xl font-bold text-ink">{formatDays(s.avgDays)}</p><p className={`text-xs font-semibold ${vsTarget === null ? 'text-steel' : vsTarget > 0 ? 'text-signal-red' : 'text-signal-green'}`}>{vsTarget === null ? 'No target comparison' : `${vsTarget > 0 ? '+' : ''}${vsTarget.toFixed(1)} days vs target`}</p><div className="mt-3 border-t border-black/5 pt-3"><p className="text-[10px] uppercase tracking-wide text-steel">Carrying cost impact</p><p className="font-display text-lg font-bold text-ink">${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div></div>})}</div></section>}
 
             <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
               <div><div className="mb-2"><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-violet-600">Trends</p><h2 className="font-display text-xl font-bold text-ink">Performance Over Time</h2></div><CompletionsTrendChart data={stats.weeklyTrend} /></div>
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5"><div className="mb-3"><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-steel">Deep Dive</p><h2 className="font-display text-xl font-bold text-ink">Operational Details</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[520px] text-sm"><thead><tr className="border-b border-gray-200 text-left text-[10px] uppercase tracking-wide text-steel"><th className="py-2">Stage</th><th className="py-2 text-right">Now</th><th className="py-2 text-right">Avg time</th><th className="py-2 text-right">Impact</th></tr></thead><tbody>{stats.stageImpact.map((s) => <tr key={s.key} className="border-b border-gray-100 last:border-0"><td className="py-3 font-medium text-ink">{s.label}</td><td className="py-3 text-right text-steel">{s.waitingCount}</td><td className="py-3 text-right text-steel">{formatDays(s.avgDays)}</td><td className="py-3 text-right font-semibold text-ink">${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td></tr>)}</tbody></table></div></div>
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5"><div className="mb-3 flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-steel">Deep Dive</p><h2 className="font-display text-xl font-bold text-ink">Operational Details</h2><p className="mt-1 text-xs text-steel">Every configured Main Board stage is shown in board order, including empty stages.</p></div><details className="text-right"><summary className="cursor-pointer text-[11px] font-semibold text-signal-blue">How calculations work</summary><div className="mt-2 max-w-xs rounded-lg bg-asphalt p-3 text-left text-[11px] leading-relaxed text-steel"><b>Now</b> is the live active count. <b>Avg time</b> uses completed stage stays in the selected period, with live time used when available. <b>Target</b> is this dealership's red aging threshold. <b>Current carrying cost</b> is the cost accumulated by active vehicles currently in that stage.</div></details></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b border-gray-200 text-left text-[10px] uppercase tracking-wide text-steel"><th className="py-2">Stage</th><th className="py-2 text-right">Active now</th><th className="py-2 text-right">Avg time</th><th className="py-2 text-right">Target</th><th className="py-2 text-right">Difference</th><th className="py-2 text-right">Current carrying cost</th></tr></thead><tbody>{stats.stageImpact.map((s) => <tr key={s.key} className="border-b border-gray-100 last:border-0"><td className="py-3 font-medium text-ink">{s.label}</td><td className="py-3 text-right text-steel">{s.waitingCount}</td><td className="py-3 text-right text-steel">{formatDays(s.avgDays)}</td><td className="py-3 text-right text-steel">{s.targetDays === null ? 'Not tracked' : formatDays(s.targetDays)}</td><td className={`py-3 text-right font-semibold ${s.differenceDays === null ? 'text-steel' : s.differenceDays > 0 ? 'text-signal-red' : 'text-signal-green'}`}>{s.differenceDays === null ? '—' : Math.abs(s.differenceDays) < 0.05 ? 'On target' : `${Math.abs(s.differenceDays).toFixed(1)} day${Math.abs(s.differenceDays) === 1 ? '' : 's'} ${s.differenceDays > 0 ? 'over' : 'under'}`}</td><td className="py-3 text-right font-semibold text-ink">${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td></tr>)}</tbody></table></div>{stats.boardWatchItems.length > 0 && <div className="mt-5 border-t border-gray-100 pt-4"><h3 className="font-display text-sm font-bold text-ink">Board Watch</h3><div className="mt-2 space-y-2">{stats.boardWatchItems.slice(0, 5).map((item, i) => <button type="button" key={`${item.vehicleId}-${i}`} onClick={() => onNavigateToVehicle?.(item.vehicleId, item.board)} disabled={!onNavigateToVehicle} className="flex w-full items-start gap-2 rounded-lg bg-asphalt px-3 py-2 text-left text-xs text-steel transition hover:bg-gray-200"><span>{item.emoji}</span><span className="flex-1">{item.text}</span><span className="font-semibold text-signal-blue">Open →</span></button>)}</div></div>}</div>
             </section>
 
             <p className="pb-3 text-center text-[10px] text-steel">Estimates use this dealership's configured rates: ${usedRatePerDay}/day used and ${newRatePerDay}/day new. Savings are estimates, not guarantees.</p>
