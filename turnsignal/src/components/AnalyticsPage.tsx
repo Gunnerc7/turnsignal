@@ -1112,407 +1112,159 @@ ${stats.todaysPriorities.length > 0 ? `
     return insights;
   }
 
-  // mainBoard used inside the stats useMemo above isn't reachable from
-  // render — that one's scoped to the useMemo, this file no longer needs
-  // a render-level copy since the pipeline strip that used it was removed.
+  const bottleneckDisplay = stats.bottleneck
+    ? boards.find((b) => b.key === stats.bottleneck?.board)?.stages.find((s) => s.key === stats.bottleneck?.stage)?.label ?? stats.bottleneck.stage
+    : 'No bottleneck';
+
+  const turnTrend =
+    stats.avgTurnTime !== null && stats.previousAvgTurnTime !== null
+      ? stats.previousAvgTurnTime - stats.avgTurnTime
+      : null;
+
+  const simulatorValue = simulatedTurnRate ?? stats.avgTurnTime ?? 0;
+  const simulatorImpact =
+    simulatedTurnRate !== null && stats.avgTurnTime !== null
+      ? (simulatedTurnRate - stats.avgTurnTime) * stats.blendedDailyRate * stats.completedInRange
+      : null;
 
   return (
-    <div className="fixed inset-0 bg-white z-50 flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3.5 bg-ink text-white flex-shrink-0 flex-wrap gap-y-2">
-        <div className="flex items-center gap-2">
-          <div>
-            <p className="text-[11px] text-mist uppercase tracking-wider leading-none">Analytics</p>
-            <h1 className="font-display text-lg font-semibold leading-tight">{dealershipName}</h1>
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#F6F8FC]">
+      <header className="flex-shrink-0 bg-ink text-white">
+        <div className="mx-auto flex w-full max-w-[1500px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-mist">Analytics</p>
+              <h1 className="font-display text-xl font-bold leading-tight">Mission Control</h1>
+              <p className="mt-0.5 text-xs text-mist">{dealershipName}</p>
+            </div>
+            <button onClick={onClose} className="rounded-full bg-signal-blue px-3 py-2 text-xs font-semibold text-white shadow-sm">
+              ← Main Board
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="ml-2 text-xs font-semibold bg-signal-blue text-white rounded-full px-3 py-1.5 whitespace-nowrap"
-          >
-            ← Main Board
-          </button>
+          <div className="flex items-center gap-3 text-xs text-mist">
+            {refreshing && <span>Refreshing…</span>}
+            <button onClick={() => load(false)} disabled={refreshing} className="hover:text-white disabled:opacity-50">↻ Refresh</button>
+            <button onClick={() => setShowRateSettings((v) => !v)} className="hover:text-white">$ Rates</button>
+            <button onClick={handleExportPDF} className="hover:text-white">⇩ Export PDF</button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          {refreshing && <span className="text-xs text-mist">Refreshing…</span>}
-          <button
-            onClick={() => load(false)}
-            disabled={refreshing}
-            className="text-xs text-mist hover:text-white py-2 whitespace-nowrap disabled:opacity-50"
-          >
-            🔄 Refresh
-          </button>
-          <button
-            onClick={() => setShowRateSettings((s) => !s)}
-            className="text-xs text-mist hover:text-white py-2 whitespace-nowrap"
-          >
-            💰 Rates
-          </button>
-          <button
-            onClick={handleExportPDF}
-            className="text-xs text-mist hover:text-white py-2 whitespace-nowrap"
-          >
-            ⬇ Export PDF
-          </button>
-        </div>
-      </div>
+      </header>
 
       {showRateSettings && (
-        <div className="flex-shrink-0 bg-asphalt border-b border-gray-200 px-4 py-3">
-          <p className="text-xs text-steel mb-2">
-            Per-day holding cost, separate for new vs used — shown on every card. Something you'd set once and
-            barely touch, not a daily setting.
-          </p>
-          <div className="grid grid-cols-2 gap-3 mb-2">
-            <div>
-              <label className="block text-xs font-medium text-ink mb-1">New ($/day)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={newRateInput}
-                onChange={(e) => setNewRateInput(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-ink mb-1">Used ($/day)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={usedRateInput}
-                onChange={(e) => setUsedRateInput(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
+        <div className="flex-shrink-0 border-b border-gray-200 bg-white px-4 py-3 sm:px-6">
+          <div className="mx-auto grid max-w-[900px] gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <label className="text-xs font-medium text-ink">New ($/day)
+              <input type="number" min="0" step="0.01" value={newRateInput} onChange={(e) => setNewRateInput(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="text-xs font-medium text-ink">Used ($/day)
+              <input type="number" min="0" step="0.01" value={usedRateInput} onChange={(e) => setUsedRateInput(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <button onClick={handleSaveRates} disabled={savingRates} className="rounded-lg bg-signal-blue px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
+              {savingRates ? 'Saving…' : 'Save rates'}
+            </button>
           </div>
-          <button
-            onClick={handleSaveRates}
-            disabled={savingRates}
-            className="w-full bg-signal-blue text-white text-sm font-medium rounded-lg py-2 disabled:opacity-60"
-          >
-            {savingRates ? 'Saving…' : 'Save rates'}
-          </button>
         </div>
       )}
 
-      <div className="flex-shrink-0 bg-asphalt border-b border-gray-200">
-        <div className="flex gap-1.5 overflow-x-auto px-4 py-2.5">
+      <div className="flex-shrink-0 border-b border-gray-200 bg-white">
+        <div className="mx-auto flex w-full max-w-[1500px] gap-2 overflow-x-auto px-4 py-3 sm:px-6">
           {RANGE_OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              onClick={() => setRange(opt.key)}
-              className={`font-display px-3.5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                range === opt.key ? 'bg-signal-blue text-white' : 'text-steel bg-white'
-              }`}
-            >
+            <button key={opt.key} onClick={() => setRange(opt.key)} className={`rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap ${range === opt.key ? 'bg-signal-blue text-white shadow-sm' : 'bg-asphalt text-steel'}`}>
               {opt.label}
             </button>
           ))}
         </div>
         {range === 'custom' && (
-          <div className="flex gap-2 px-4 pb-3">
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className="flex-1 text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white"
-            />
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className="flex-1 text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white"
-            />
+          <div className="mx-auto flex max-w-[1500px] gap-2 px-4 pb-3 sm:px-6">
+            <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </div>
         )}
       </div>
 
       {loading ? (
-        <p className="text-steel text-sm p-4">Loading…</p>
+        <p className="p-6 text-sm text-steel">Loading Mission Control…</p>
       ) : (
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Time-sensitive callouts only — nothing permanent lives here,
-              so this stays empty (and invisible) most of the time. */}
-          {stats.waitingOnTitleCount > 0 && (
-            <div className="flex items-center gap-2 bg-signal-amber/10 border border-signal-amber/30 rounded-xl px-3 py-2.5">
-              <span className="text-base">🟡</span>
-              <p className="text-sm text-ink">
-                {stats.waitingOnTitleCount} vehicle{stats.waitingOnTitleCount === 1 ? ' is' : 's are'} waiting on
-                title — follow up on paperwork.
-              </p>
-            </div>
-          )}
-
-          {/* ACTION CENTER — mixes individual vehicles and category-level
-              problems (a stage backing up, titles piling up), ranked
-              together by real dollar impact. */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="font-display text-base font-bold text-ink">Action Center</h2>
-              <button
-                onClick={() => setPrioritiesModalOpen(true)}
-                className="text-signal-blue text-xs font-medium whitespace-nowrap"
-              >
-                View All Issues →
-              </button>
-            </div>
-            <p className="text-xs text-steel mb-2.5">Top items that need your attention right now</p>
-
-            {stats.actionIssues.length > 0 ? (
-              <div className="space-y-2.5">
-                {stats.actionIssues.map((issue, i) => (
-                  <div
-                    key={i}
-                    className={`bg-white border-l-4 rounded-lg p-3 shadow-sm ${
-                      i === 0 ? 'border-signal-red' : 'border-signal-amber'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <p className="font-display font-semibold text-ink text-sm truncate">{issue.title}</p>
-                      <span
-                        className={`flex-shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
-                          i === 0 ? 'bg-signal-red/10 text-signal-red' : 'bg-signal-amber/10 text-signal-amber'
-                        }`}
-                      >
-                        {issue.badge}
-                      </span>
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:py-6">
+            <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <div className="rounded-2xl bg-gradient-to-br from-[#163B9F] to-signal-blue p-5 text-white shadow-lift md:col-span-2 xl:col-span-1">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-blue-100">Turn Rate</p>
+                  {turnTrend !== null && Math.abs(turnTrend) >= 0.1 && <span className={`text-xs font-semibold ${turnTrend > 0 ? 'text-emerald-200' : 'text-red-200'}`}>{turnTrend > 0 ? '↓' : '↑'} {Math.abs(turnTrend).toFixed(1)}d</span>}
+                </div>
+                <div className="mx-auto mt-2 max-w-[230px]"><TurnRateGauge value={simulatorValue} yellowDays={yellowDays} redDays={redDays} /></div>
+                <p className="-mt-2 text-center font-display text-4xl font-bold">{formatDays(simulatorValue)}</p>
+                <p className="text-center text-xs text-blue-100">{simulatedTurnRate === null ? 'Current average' : 'What-if turn rate'}</p>
+                <div className="mt-4 border-t border-white/20 pt-3">
+                  <input type="range" min={0} max={14} step={0.5} value={simulatorValue} onChange={(e) => setSimulatedTurnRate(parseFloat(e.target.value))} className="w-full accent-white" aria-label="Simulated turn rate" />
+                  <div className="mt-1 flex justify-between text-[10px] text-blue-100"><span>0 days</span><span>Drag to test savings</span><span>14 days</span></div>
+                  {simulatorImpact !== null && (
+                    <div className={`mt-3 rounded-xl px-3 py-2 text-center text-sm font-semibold ${simulatorImpact < 0 ? 'bg-emerald-400/20 text-emerald-100' : simulatorImpact > 0 ? 'bg-red-400/20 text-red-100' : 'bg-white/10 text-white'}`}>
+                      {Math.abs(simulatorImpact) < 1 ? 'About the same as today' : `≈ $${Math.abs(simulatorImpact).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${simulatorImpact < 0 ? 'saved' : 'added'} this period`}
                     </div>
-                    <p className="text-xs text-steel mb-2">{issue.sublabel}</p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-display font-bold text-ink tabular">
-                        Est. Cost: ${issue.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </span>
-                      <button
-                        onClick={() => issue.vehicleId && issue.board && onNavigateToVehicle?.(issue.vehicleId, issue.board)}
-                        disabled={!issue.vehicleId || !onNavigateToVehicle}
-                        className="text-signal-blue text-xs font-semibold border border-signal-blue rounded-full px-3 py-1"
-                      >
-                        {issue.actionLabel}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  )}
+                  {simulatedTurnRate !== null && <button onClick={() => setSimulatedTurnRate(null)} className="mt-2 w-full text-center text-xs text-blue-100 underline">Reset to current</button>}
+                </div>
               </div>
-            ) : (
-              <div className="w-full bg-signal-green/10 border border-signal-green/30 rounded-xl p-4">
-                <p className="text-sm text-ink font-medium">🟢 Nothing needs immediate attention right now.</p>
+
+              <div className="rounded-2xl bg-[#16244A] p-5 text-white shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Active Carrying Cost</p>
+                <p className="mt-4 font-display text-4xl font-bold">${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                <p className="mt-1 text-sm text-blue-100">${stats.blendedDailyRate.toFixed(0)} average per vehicle/day</p>
+                <div className="mt-5 rounded-xl bg-white/10 p-3"><p className="text-[11px] text-blue-100">Opportunity beyond target</p><p className="font-display text-2xl font-bold text-white">${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div>
               </div>
-            )}
+
+              <div className="rounded-2xl bg-[#1D356D] p-5 text-white shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Vehicles In Process</p>
+                <p className="mt-4 font-display text-4xl font-bold">{stats.mainBoardActive}</p>
+                <p className="mt-1 text-sm text-blue-100">Active on Main Board</p>
+                <div className="mt-5 space-y-2 text-sm"><div className="flex justify-between"><span className="text-blue-100">Added</span><b>{stats.addedInRange}</b></div><div className="flex justify-between"><span className="text-blue-100">Aging red</span><b className={stats.agingRedCount ? 'text-red-200' : ''}>{stats.agingRedCount}</b></div></div>
+              </div>
+
+              <div className="rounded-2xl bg-[#21417F] p-5 text-white shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Completions</p>
+                <p className="mt-4 font-display text-4xl font-bold">{stats.completedInRange}</p>
+                <p className="mt-1 text-sm text-blue-100">This selected period</p>
+                <div className="mt-5 rounded-xl bg-emerald-400/15 p-3"><p className="text-[11px] text-emerald-100">Average stage time</p><p className="font-display text-2xl font-bold">{formatDays(stats.avgStageTime)}</p></div>
+              </div>
+
+              <div className="rounded-2xl bg-[#2A4C90] p-5 text-white shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-blue-100">Current Bottleneck</p>
+                <p className="mt-4 font-display text-2xl font-bold">{bottleneckDisplay}</p>
+                <p className="mt-1 text-sm text-blue-100">{stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} average` : 'No completed-stage data yet'}</p>
+                <div className="mt-5 rounded-xl bg-white/10 p-3"><p className="text-[11px] text-blue-100">Longest active vehicle</p><p className="truncate text-sm font-semibold">{stats.longestAging?.label ?? 'None'}</p></div>
+              </div>
+            </section>
+
+            <section className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)]">
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+                <div className="mb-4 flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-signal-red">Act Now</p><h2 className="font-display text-xl font-bold text-ink">Action Center</h2><p className="text-xs text-steel">Only the highest-impact items are shown here.</p></div><button onClick={() => setPrioritiesModalOpen(true)} className="text-xs font-semibold text-signal-blue">View all issues →</button></div>
+                {stats.actionIssues.length > 0 ? <div className="grid gap-3 md:grid-cols-3">{stats.actionIssues.map((issue, i) => <article key={i} className={`rounded-xl border p-4 ${i === 0 ? 'border-red-200 bg-red-50/60' : 'border-amber-200 bg-amber-50/60'}`}><div className="flex items-center justify-between gap-2"><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${i === 0 ? 'bg-red-100 text-signal-red' : 'bg-amber-100 text-amber-700'}`}>{i === 0 ? 'Critical' : 'High'}</span><span className="text-xs font-semibold text-steel">{issue.badge}</span></div><h3 className="mt-3 font-display text-base font-bold text-ink">{issue.title}</h3><p className="mt-1 min-h-[32px] text-xs text-steel">{issue.sublabel}</p><p className="mt-4 text-xs text-steel">Estimated impact</p><p className="font-display text-2xl font-bold text-ink">${issue.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p><button onClick={() => issue.vehicleId && issue.board && onNavigateToVehicle?.(issue.vehicleId, issue.board)} disabled={!issue.vehicleId || !onNavigateToVehicle} className="mt-4 w-full rounded-lg border border-signal-blue px-3 py-2 text-xs font-semibold text-signal-blue disabled:opacity-50">{issue.actionLabel}</button></article>)}</div> : <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm font-medium text-emerald-800">Everything is flowing normally. No urgent issues right now.</div>}
+              </div>
+
+              <aside className="rounded-2xl bg-gradient-to-br from-[#ECFDF3] to-white p-5 shadow-sm ring-1 ring-emerald-100">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-signal-green">Biggest Opportunity</p>
+                <h2 className="mt-1 font-display text-xl font-bold text-ink">How to Save More</h2>
+                <p className="mt-3 font-display text-4xl font-bold text-signal-green">${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                <p className="text-xs text-steel">Estimated opportunity based on this dealer's own rates and targets.</p>
+                <div className="mt-4 space-y-3">{stats.saveMoreTips.slice(0, 3).map((tip, i) => <div key={i} className="rounded-xl bg-white p-3 ring-1 ring-emerald-100"><div className="flex gap-2"><span>{tip.icon}</span><div><p className="text-sm font-semibold text-ink">{tip.title}</p><p className="mt-0.5 text-xs leading-snug text-steel">{tip.text}</p></div></div></div>)}</div>
+              </aside>
+            </section>
+
+            {stats.stageImpact.length > 0 && <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5"><div className="mb-4"><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-signal-blue">Performance</p><h2 className="font-display text-xl font-bold text-ink">Stage Health</h2><p className="text-xs text-steel">See the workflow from left to right and find where inventory is slowing.</p></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{stats.stageImpact.map((s) => { const vsTarget = s.avgDays !== null ? s.avgDays - yellowDays : null; return <div key={s.key} className={`rounded-xl border p-4 ${s.indicator === 'red' ? 'border-red-200 bg-red-50/50' : s.indicator === 'yellow' ? 'border-amber-200 bg-amber-50/50' : 'border-emerald-200 bg-emerald-50/40'}`}><div className="flex items-center justify-between"><span className={`h-2.5 w-2.5 rounded-full ${s.indicator === 'red' ? 'bg-signal-red' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-green'}`} /><span className="text-xs font-semibold text-steel">{s.waitingCount} waiting</span></div><h3 className="mt-3 font-display font-bold text-ink">{s.label}</h3><p className="mt-2 font-display text-2xl font-bold text-ink">{formatDays(s.avgDays)}</p><p className={`text-xs font-semibold ${vsTarget === null ? 'text-steel' : vsTarget > 0 ? 'text-signal-red' : 'text-signal-green'}`}>{vsTarget === null ? 'No target comparison' : `${vsTarget > 0 ? '+' : ''}${vsTarget.toFixed(1)} days vs target`}</p><div className="mt-3 border-t border-black/5 pt-3"><p className="text-[10px] uppercase tracking-wide text-steel">Carrying cost impact</p><p className="font-display text-lg font-bold text-ink">${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div></div>})}</div></section>}
+
+            <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+              <div><div className="mb-2"><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-violet-600">Trends</p><h2 className="font-display text-xl font-bold text-ink">Performance Over Time</h2></div><CompletionsTrendChart data={stats.weeklyTrend} /></div>
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5"><div className="mb-3"><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-steel">Deep Dive</p><h2 className="font-display text-xl font-bold text-ink">Operational Details</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[520px] text-sm"><thead><tr className="border-b border-gray-200 text-left text-[10px] uppercase tracking-wide text-steel"><th className="py-2">Stage</th><th className="py-2 text-right">Now</th><th className="py-2 text-right">Avg time</th><th className="py-2 text-right">Impact</th></tr></thead><tbody>{stats.stageImpact.map((s) => <tr key={s.key} className="border-b border-gray-100 last:border-0"><td className="py-3 font-medium text-ink">{s.label}</td><td className="py-3 text-right text-steel">{s.waitingCount}</td><td className="py-3 text-right text-steel">{formatDays(s.avgDays)}</td><td className="py-3 text-right font-semibold text-ink">${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td></tr>)}</tbody></table></div></div>
+            </section>
+
+            <p className="pb-3 text-center text-[10px] text-steel">Estimates use this dealership's configured rates: ${usedRatePerDay}/day used and ${newRatePerDay}/day new. Savings are estimates, not guarantees.</p>
           </div>
-
-          {/* MONEY SNAPSHOT */}
-          <div>
-            <h2 className="font-display text-base font-bold text-ink mb-0.5">Money Snapshot</h2>
-            <p className="text-xs text-steel mb-2.5">Live carrying cost and savings opportunity</p>
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="bg-white border border-gray-200 rounded-lg p-3">
-                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Current Carrying Cost</p>
-                <p className="font-display text-xl font-bold text-ink tabular">
-                  ${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-                <p className="text-[11px] text-steel tabular">${stats.blendedDailyRate.toFixed(0)} / day</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-lg p-3">
-                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Potential Savings</p>
-                <p className="font-display text-xl font-bold text-signal-blue tabular">
-                  ${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-                <p className="text-[11px] text-steel">If all stages hit target</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-lg p-3">
-                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Monthly Projection</p>
-                <p className="font-display text-xl font-bold text-ink tabular">
-                  ${stats.monthlyProjection.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-                <p className="text-[11px] text-steel">At current pace</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-lg p-3">
-                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Money Saved</p>
-                <p className="font-display text-xl font-bold text-signal-green tabular">
-                  ${stats.moneySavedThisMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-                <p className="text-[11px] text-steel">vs. last period</p>
-              </div>
-            </div>
-          </div>
-
-          {/* HOW TO SAVE MORE — same data as Action Center, reframed as a
-              specific action with a dollar estimate attached. */}
-          {stats.saveMoreTips.length > 0 && (
-            <div>
-              <h2 className="font-display text-base font-bold text-ink mb-2.5">How to Save More</h2>
-              <div className="space-y-2">
-                {stats.saveMoreTips.map((tip, i) => (
-                  <div key={i} className="flex items-start gap-3 bg-white border border-gray-200 rounded-lg p-3">
-                    <span className="text-lg flex-shrink-0">{tip.icon}</span>
-                    <div className="min-w-0">
-                      <p className="font-display font-semibold text-ink text-sm">{tip.title}</p>
-                      <p className="text-xs text-steel leading-snug">{tip.text}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* PERFORMANCE OVERVIEW — the gauge lives here, front and center. */}
-          <div>
-            <h2 className="font-display text-base font-bold text-ink mb-0.5">Performance Overview</h2>
-            <p className="text-xs text-steel mb-2.5">How your store is performing</p>
-            <div className="bg-ink rounded-2xl p-4 mb-2.5">
-              <div className="max-w-[220px] mx-auto">
-                <TurnRateGauge value={simulatedTurnRate ?? stats.avgTurnTime} yellowDays={yellowDays} redDays={redDays} />
-              </div>
-              <p className="text-center font-display text-2xl font-bold text-white -mt-1">
-                {formatDays(simulatedTurnRate ?? stats.avgTurnTime)}
-              </p>
-              <p className="text-center text-mist text-xs">
-                {simulatedTurnRate !== null ? 'if turn rate were this' : 'Turn Rate'}
-                {simulatedTurnRate === null && stats.previousAvgTurnTime !== null && stats.avgTurnTime !== null && Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime) >= 0.1 && (
-                  <span className={stats.previousAvgTurnTime - stats.avgTurnTime > 0 ? 'text-signal-green' : 'text-signal-red'}>
-                    {' '}· {stats.previousAvgTurnTime - stats.avgTurnTime > 0 ? '↓' : '↑'}{' '}
-                    {Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime).toFixed(1)}d vs. last period
-                  </span>
-                )}
-              </p>
-
-              {/* What-if simulator — dragging this moves the needle above
-                  and estimates the dollar impact, using this
-                  dealership's own configured rates. An estimate, same
-                  honest tone as the Opportunity Meter — not a promise. */}
-              <div className="border-t border-white/10 mt-3 pt-3">
-                <input
-                  type="range"
-                  min={0}
-                  max={14}
-                  step={0.5}
-                  value={simulatedTurnRate ?? stats.avgTurnTime ?? 0}
-                  onChange={(e) => setSimulatedTurnRate(parseFloat(e.target.value))}
-                  className="w-full accent-signal-blue"
-                />
-                <div className="flex items-center justify-between text-[10px] text-mist mb-2">
-                  <span>0 days</span>
-                  <span>14 days</span>
-                </div>
-                {simulatedTurnRate !== null &&
-                  (() => {
-                    const currentAvg = stats.avgTurnTime;
-                    if (currentAvg === null) return null;
-                    const delta = simulatedTurnRate - currentAvg;
-                    const impact = delta * stats.blendedDailyRate * stats.completedInRange;
-                    return (
-                      <p className="text-center text-sm">
-                        <span className={impact < 0 ? 'text-signal-green font-semibold' : impact > 0 ? 'text-signal-red font-semibold' : 'text-mist'}>
-                          {Math.abs(impact) < 1
-                            ? 'About the same as today'
-                            : `~$${Math.abs(impact).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${impact < 0 ? 'saved' : 'more'} vs. today`}
-                        </span>
-                        <br />
-                        <span className="text-mist text-xs">
-                          estimate across {stats.completedInRange} vehicle{stats.completedInRange === 1 ? '' : 's'} this period
-                        </span>
-                      </p>
-                    );
-                  })()}
-                {simulatedTurnRate !== null && (
-                  <button
-                    onClick={() => setSimulatedTurnRate(null)}
-                    className="w-full text-center text-signal-blue text-xs font-medium mt-2"
-                  >
-                    Reset to current
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="bg-white border border-gray-200 rounded-lg p-3">
-                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Vehicles Completed</p>
-                <p className="font-display text-xl font-bold text-ink tabular">{stats.completedInRange}</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-lg p-3">
-                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Average Stage Time</p>
-                <p className="font-display text-xl font-bold text-ink tabular">{formatDays(stats.avgStageTime)}</p>
-              </div>
-            </div>
-            <div className="mt-2.5">
-              <CompletionsTrendChart data={stats.weeklyTrend} />
-            </div>
-          </div>
-
-          {/* DEPARTMENT HEALTH — table, sorted by dollar impact so the
-              most expensive stage is always the first row. */}
-          {stats.stageImpact.length > 0 && (
-            <div>
-              <h2 className="font-display text-base font-bold text-ink mb-2.5">Department Health</h2>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="grid grid-cols-[1.4fr_0.7fr_0.6fr_0.9fr] bg-asphalt text-[10px] uppercase tracking-wide text-steel px-2.5 py-2">
-                  <span>Stage</span>
-                  <span className="text-right">Avg</span>
-                  <span className="text-right">vs Tgt</span>
-                  <span className="text-right">Impact</span>
-                </div>
-                {stats.stageImpact.map((s) => {
-                  const vsTarget = s.avgDays !== null ? s.avgDays - yellowDays : null;
-                  const maxCost = stats.stageImpact[0]?.cost || 1;
-                  return (
-                    <div key={s.key} className="border-t border-gray-100 px-2.5 py-2">
-                      <div className="grid grid-cols-[1.4fr_0.7fr_0.6fr_0.9fr] items-center text-xs">
-                        <span className="text-ink font-medium truncate">{s.label}</span>
-                        <span className="text-right tabular text-steel">{formatDays(s.avgDays)}</span>
-                        <span
-                          className={`text-right tabular font-medium ${
-                            vsTarget === null ? 'text-steel' : vsTarget > 0 ? 'text-signal-red' : 'text-signal-green'
-                          }`}
-                        >
-                          {vsTarget !== null ? `${vsTarget > 0 ? '+' : ''}${vsTarget.toFixed(1)}` : '—'}
-                        </span>
-                        <span className="text-right tabular font-semibold text-ink">
-                          ${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full mt-1.5 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${
-                            s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
-                          }`}
-                          style={{ width: `${Math.min(100, (s.cost / maxCost) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* LONGEST AGING VEHICLE */}
-          {stats.longestAging && (
-            <div>
-              <h2 className="font-display text-base font-bold text-ink mb-2.5">Longest Aging Vehicle</h2>
-              <div className="bg-white border border-gray-200 rounded-lg p-3 flex items-center gap-3">
-                <div className="w-12 h-12 rounded-lg bg-asphalt flex items-center justify-center flex-shrink-0 text-2xl">
-                  🚗
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-display font-semibold text-ink text-sm truncate">{stats.longestAging.label}</p>
-                  <p className="text-xs text-steel tabular">{formatDays(stats.longestAging.days)} in current stage</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        </main>
       )}
 
-      {prioritiesModalOpen && (
-        <TodaysPrioritiesModal
-          priorities={stats.todaysPriorities}
-          boards={boards}
-          newRatePerDay={newRatePerDay}
-          usedRatePerDay={usedRatePerDay}
-          onClose={() => setPrioritiesModalOpen(false)}
-          onNavigateToVehicle={onNavigateToVehicle}
-        />
-      )}
+      {prioritiesModalOpen && <TodaysPrioritiesModal priorities={stats.todaysPriorities} boards={boards} newRatePerDay={newRatePerDay} usedRatePerDay={usedRatePerDay} onClose={() => setPrioritiesModalOpen(false)} onNavigateToVehicle={onNavigateToVehicle} />}
     </div>
   );
 }
