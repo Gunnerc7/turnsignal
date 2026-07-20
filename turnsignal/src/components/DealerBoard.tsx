@@ -21,6 +21,8 @@ import VehicleCard from './VehicleCard';
 import ManageBoardsModal from './ManageBoardsModal';
 import DealershipSettingsModal from './DealershipSettingsModal';
 import TeamRolesModal from './TeamRolesModal';
+import SettingsModal from './SettingsModal';
+import CarryingCostRatesModal from './CarryingCostRatesModal';
 import ScanToMoveModal from './ScanToMoveModal';
 import LiveInventoryTable from './LiveInventoryTable';
 import ImportInventoryModal from './ImportInventoryModal';
@@ -40,6 +42,9 @@ export default function DealerBoard({
   onNavigateHandled,
   groupId,
   onNavigateToSiblingStore,
+  onOpenInvite,
+  onOpenName,
+  onOpenPassword,
 }: {
   dealershipId: string;
   isOwner: boolean;
@@ -49,6 +54,9 @@ export default function DealerBoard({
   onNavigateHandled?: () => void;
   groupId?: string | null;
   onNavigateToSiblingStore?: (dealership: { id: string; name: string }, vehicleId: string, board: string) => void;
+  onOpenInvite: () => void;
+  onOpenName: () => void;
+  onOpenPassword: () => void;
 }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [photoCounts, setPhotoCounts] = useState<Map<string, number>>(new Map());
@@ -75,6 +83,8 @@ export default function DealerBoard({
   >(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [manageBoardsOpen, setManageBoardsOpen] = useState(false);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [ratesModalOpen, setRatesModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rolesOpen, setRolesOpen] = useState(false);
   const [yellowDays, setYellowDays] = useState(3);
@@ -594,24 +604,12 @@ export default function DealerBoard({
         >
           Live Inventory
         </button>
-        {(isOwner || isManager) && (
-          <button
-            onClick={() => setManageBoardsOpen(true)}
-            className="ml-1 text-steel text-sm whitespace-nowrap px-2"
-          >
-            ⚙ Manage
-          </button>
-        )}
-        {(isOwner || isManager) && (
-          <button onClick={() => setSettingsOpen(true)} className="text-steel text-sm whitespace-nowrap px-2">
-            🎨 Aging colors
-          </button>
-        )}
-        {(isOwner || isManager) && (
-          <button onClick={() => setRolesOpen(true)} className="text-steel text-sm whitespace-nowrap px-2">
-            👤 Roles
-          </button>
-        )}
+        <button
+          onClick={() => setSettingsMenuOpen(true)}
+          className="ml-1 text-steel text-sm whitespace-nowrap px-2"
+        >
+          ⚙️ Settings
+        </button>
         <div className="relative ml-auto flex items-center gap-2">
           <button
             onClick={() => {
@@ -917,6 +915,25 @@ export default function DealerBoard({
       )}
 
       {rolesOpen && <TeamRolesModal dealershipId={dealershipId} onClose={() => setRolesOpen(false)} />}
+
+      {settingsMenuOpen && (
+        <SettingsModal
+          isOwner={isOwner}
+          isManager={isManager}
+          onClose={() => setSettingsMenuOpen(false)}
+          onOpenManageBoards={() => setManageBoardsOpen(true)}
+          onOpenAgingColors={() => setSettingsOpen(true)}
+          onOpenRoles={() => setRolesOpen(true)}
+          onOpenRates={() => setRatesModalOpen(true)}
+          onOpenInvite={onOpenInvite}
+          onOpenName={onOpenName}
+          onOpenPassword={onOpenPassword}
+        />
+      )}
+
+      {ratesModalOpen && (
+        <CarryingCostRatesModal dealershipId={dealershipId} onClose={() => setRatesModalOpen(false)} />
+      )}
     </div>
   );
 }
