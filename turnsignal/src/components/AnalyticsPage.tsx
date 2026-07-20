@@ -771,20 +771,92 @@ export default function AnalyticsPage({
     // configured rates and thresholds. A vehicle exactly at or under
     // target contributes $0 to this number, even though it's still
     // accruing real carrying cost overall.
-    let opportunityAmount = 0;
+    type OpportunityVehicle = {
+      vehicleId: string;
+      board: string;
+      stage: string;
+      label: string;
+      stageLabel: string;
+      daysOverTarget: number;
+      dailyRate: number;
+      amount: number;
+    };
+
+    const opportunityVehicles: OpportunityVehicle[] = [];
+    const opportunityByStageMap = new Map<
+      string,
+      { board: string; stage: string; label: string; amount: number; vehicleCount: number; firstVehicleId: string }
+    >();
+
     vehicles
-      .filter((v) => !v.completed)
+      .filter(
+        (v) =>
+          !v.completed &&
+          !v.carrying_cost_excluded &&
+          (v.board !== 'loaners' || v.loaner_track_carrying_cost)
+      )
       .forEach((v) => {
         const thresholds = getThresholds(v.board, v.stage, yellowDays, redDays);
-        if (!thresholds) return; // Inbound/Loaners aren't held to a target the same way
-        const anchor = v.recon_started_at ?? v.stage_entered_at;
-        const days = (Date.now() - new Date(anchor).getTime()) / 86400000;
-        const excessDays = Math.max(0, days - thresholds.red);
+        if (!thresholds) return; // Inbound/Loaners without a target do not create an opportunity estimate.
+
+        // Stage targets must use time in the CURRENT stage. Using recon_started_at
+        // here would incorrectly charge Service, Detail, etc. for time accumulated
+        // elsewhere in the workflow.
+        const daysInStage = Math.max(
+          0,
+          (Date.now() - new Date(v.stage_entered_at).getTime()) / 86400000
+        );
+        const excessDays = Math.max(0, daysInStage - thresholds.red);
         if (excessDays <= 0) return;
-        const rate = v.is_new ? newRatePerDay : usedRatePerDay;
-        opportunityAmount += excessDays * rate;
+
+        const dailyRate = v.is_new ? newRatePerDay : usedRatePerDay;
+        if (dailyRate <= 0) return;
+
+        const amount = excessDays * dailyRate;
+        const board = boards.find((b) => b.key === v.board);
+        const stageLabel = board?.stages.find((stage) => stage.key === v.stage)?.label ?? v.stage;
+
+        opportunityVehicles.push({
+          vehicleId: v.id,
+          board: v.board,
+          stage: v.stage,
+          label: vehicleShortLabel(v),
+          stageLabel,
+          daysOverTarget: excessDays,
+          dailyRate,
+          amount,
+        });
+
+        const key = `${v.board}::${v.stage}`;
+        const existing = opportunityByStageMap.get(key);
+        opportunityByStageMap.set(key, {
+          board: v.board,
+          stage: v.stage,
+          label: stageLabel,
+          amount: (existing?.amount ?? 0) + amount,
+          vehicleCount: (existing?.vehicleCount ?? 0) + 1,
+          firstVehicleId: existing?.firstVehicleId ?? v.id,
+        });
       });
+
+    opportunityVehicles.sort((a, b) => b.amount - a.amount);
+    const opportunityByStage = [...opportunityByStageMap.values()].sort((a, b) => b.amount - a.amount);
+    const opportunityAmount = opportunityVehicles.reduce((sum, item) => sum + item.amount, 0);
     const targetCarryingCost = Math.max(0, totalCarryingCost - opportunityAmount);
+
+    // Saved Money Counter: compares the dealership only against its own
+    // immediately preceding equal-length period. It estimates the carrying
+    // cost avoided by turning the vehicles completed this period faster.
+    // It is intentionally zero when there is no improvement or insufficient
+    // history, and is presented as an estimate rather than guaranteed savings.
+    const turnRateImprovementDays =
+      avgTurnTime !== null && previousAvgTurnTime !== null
+        ? Math.max(0, previousAvgTurnTime - avgTurnTime)
+        : null;
+    const estimatedSavingsThisPeriod =
+      turnRateImprovementDays !== null && turnTimes.length > 0 && blendedDailyRate > 0
+        ? turnRateImprovementDays * turnTimes.length * blendedDailyRate
+        : null;
 
     // Vehicles currently waiting on title — feeds a conditional line in
     // Executive Summary below (only appears when the count is actually
@@ -921,7 +993,11 @@ export default function AnalyticsPage({
       stageHealth,
       boardWatchItems,
       opportunityAmount,
+      opportunityVehicles,
+      opportunityByStage,
       targetCarryingCost,
+      turnRateImprovementDays,
+      estimatedSavingsThisPeriod,
       stageImpact,
       waitingOnTitleCount,
       wins,
@@ -1263,11 +1339,93 @@ ${stats.todaysPriorities.length > 0 ? `
               </div>
 
               <aside className="rounded-2xl bg-gradient-to-br from-[#ECFDF3] to-white p-5 shadow-sm ring-1 ring-emerald-100">
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-signal-green">Biggest Opportunity</p>
-                <h2 className="mt-1 font-display text-xl font-bold text-ink">How to Save More</h2>
-                <p className="mt-3 font-display text-4xl font-bold text-signal-green">${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-                <p className="text-xs text-steel">Estimated opportunity based on this dealer's own rates and targets.</p>
-                <div className="mt-4 space-y-3">{stats.saveMoreTips.slice(0, 3).map((tip, i) => <button type="button" key={i} onClick={() => tip.vehicleId && tip.board && onNavigateToVehicle?.(tip.vehicleId, tip.board)} disabled={!tip.vehicleId || !tip.board || !onNavigateToVehicle} className="w-full rounded-xl bg-white p-3 text-left ring-1 ring-emerald-100 transition hover:-translate-y-0.5 hover:shadow-sm disabled:transform-none disabled:cursor-default"><div className="flex gap-2"><span>{tip.icon}</span><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-ink">{tip.title}</p><p className="mt-0.5 text-xs leading-snug text-steel">{tip.text}</p>{tip.actionLabel && tip.vehicleId && <p className="mt-2 text-[11px] font-semibold text-signal-green">{tip.actionLabel} →</p>}</div></div></button>)}</div>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-signal-green">Turn Signal Opportunity Meter™</p>
+                    <h2 className="mt-1 font-display text-xl font-bold text-ink">How to Save More</h2>
+                  </div>
+                  <details className="relative text-right">
+                    <summary className="cursor-pointer text-[11px] font-semibold text-signal-green">How it works</summary>
+                    <div className="absolute right-0 z-10 mt-2 w-72 rounded-xl bg-white p-3 text-left text-[11px] leading-relaxed text-steel shadow-lift ring-1 ring-emerald-100">
+                      <b>Recoverable opportunity</b> equals each active vehicle's days beyond its current-stage target multiplied by that vehicle's dealer-configured daily carrying cost. It excludes vehicles with carrying cost turned off. <b>Estimated savings</b> compares the selected period's turn rate with the immediately preceding equal-length period.
+                    </div>
+                  </details>
+                </div>
+
+                <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-emerald-100">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-steel">Recoverable Opportunity Right Now</p>
+                  <p className="mt-1 font-display text-4xl font-bold text-signal-green">${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                  <p className="mt-1 text-xs text-steel">Excess carrying cost above this dealer's own stage targets.</p>
+                </div>
+
+                <div className="mt-3 rounded-2xl bg-[#083A8C] p-4 text-white shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-blue-100">Saved Money Counter</p>
+                  <p className="mt-1 font-display text-3xl font-bold">
+                    {stats.estimatedSavingsThisPeriod === null
+                      ? '—'
+                      : `$${stats.estimatedSavingsThisPeriod.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                  </p>
+                  <p className="mt-1 text-xs text-blue-100">
+                    {stats.estimatedSavingsThisPeriod === null
+                      ? 'Not enough comparable turn-rate history yet.'
+                      : stats.turnRateImprovementDays && stats.turnRateImprovementDays > 0
+                        ? `Estimated saved this period from turning ${stats.completedInRange} vehicle${stats.completedInRange === 1 ? '' : 's'} ${stats.turnRateImprovementDays.toFixed(1)} day${stats.turnRateImprovementDays === 1 ? '' : 's'} faster.`
+                        : 'No estimated savings versus the previous period yet.'}
+                  </p>
+                </div>
+
+                {stats.opportunityVehicles.length > 0 ? (
+                  <div className="mt-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-steel">Where the opportunity is</p>
+                      <p className="text-[10px] text-steel">Top vehicles</p>
+                    </div>
+                    <div className="space-y-2">
+                      {stats.opportunityVehicles.slice(0, 3).map((item) => (
+                        <button
+                          type="button"
+                          key={item.vehicleId}
+                          onClick={() => onNavigateToVehicle?.(item.vehicleId, item.board)}
+                          disabled={!onNavigateToVehicle}
+                          className="flex w-full items-center gap-3 rounded-xl bg-white p-3 text-left ring-1 ring-emerald-100 transition hover:-translate-y-0.5 hover:shadow-sm disabled:transform-none disabled:cursor-default"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-ink">{item.label}</p>
+                            <p className="mt-0.5 text-[11px] text-steel">{item.stageLabel} · {item.daysOverTarget.toFixed(1)} days over target · ${item.dailyRate}/day</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-display text-lg font-bold text-signal-green">${item.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                            <p className="text-[10px] font-semibold text-signal-blue">Open →</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800">
+                    No active vehicles are currently beyond their configured stage targets.
+                  </div>
+                )}
+
+                {stats.opportunityByStage.length > 0 && (
+                  <div className="mt-4 border-t border-emerald-100 pt-4">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-steel">Opportunity by stage</p>
+                    <div className="mt-2 space-y-2">
+                      {stats.opportunityByStage.slice(0, 3).map((stage) => (
+                        <button
+                          type="button"
+                          key={`${stage.board}-${stage.stage}`}
+                          onClick={() => onNavigateToVehicle?.(stage.firstVehicleId, stage.board)}
+                          disabled={!onNavigateToVehicle}
+                          className="flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-left disabled:cursor-default"
+                        >
+                          <span className="text-xs text-steel">{stage.label} · {stage.vehicleCount} vehicle{stage.vehicleCount === 1 ? '' : 's'}</span>
+                          <span className="text-xs font-bold text-ink">${stage.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </aside>
             </section>
 
