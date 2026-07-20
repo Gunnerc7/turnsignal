@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { BoardConfig, fetchBoards } from '../lib/boards';
 import { isAgingRed, getThresholds } from '../lib/aging';
 import { carryingCostSoFar } from '../lib/dates';
 import { computePriorityScores, vehicleShortLabel } from '../lib/priorityScoring';
 import TodaysPrioritiesModal from './TodaysPrioritiesModal';
-import OverviewTile from './OverviewTile';
 import TurnRateGauge from './TurnRateGauge';
 import CompletionsTrendChart from './CompletionsTrendChart';
 import ModalCloseButton from './ModalCloseButton';
@@ -149,7 +147,6 @@ export default function AnalyticsPage({
   const [range, setRange] = useState<RangeKey>('month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
-  const [expandedZone, setExpandedZone] = useState<'attention' | 'turnrate' | 'improvements' | 'deepdive' | null>(null);
   const [simulatedTurnRate, setSimulatedTurnRate] = useState<number | null>(null);
 
   const load = useCallback(
@@ -780,6 +777,115 @@ export default function AnalyticsPage({
     // tracking a trend over time than the raw count alone.
     const damageRate = vehicles.length > 0 ? (damagedCount / vehicles.length) * 100 : null;
 
+    // ── Action Center issues ─────────────────────────────────────────────
+    // Deliberately mixes two different kinds of problems — a single
+    // vehicle that's fallen behind, and a whole category backing up
+    // (a stage, or titles) — ranked together by real dollar impact,
+    // rather than only ever surfacing individual cars. A stage quietly
+    // backing up can matter more than any one vehicle in it.
+    type ActionIssue = {
+      title: string;
+      badge: string;
+      sublabel: string;
+      cost: number;
+      actionLabel: string;
+      vehicleId?: string;
+      board?: string;
+    };
+    const issueCandidates: ActionIssue[] = [];
+
+    if (todaysPriorities.length > 0) {
+      const top = todaysPriorities[0];
+      const cost = carryingCostSoFar(top.vehicle, newRatePerDay, usedRatePerDay);
+      const daysInStage = (Date.now() - new Date(top.vehicle.stage_entered_at).getTime()) / 86400000;
+      const board = boards.find((b) => b.key === top.vehicle.board);
+      const stage = board?.stages.find((s) => s.key === top.vehicle.stage);
+      issueCandidates.push({
+        title: vehicleShortLabel(top.vehicle),
+        badge: `${daysInStage.toFixed(1)} Days`,
+        sublabel: `${board?.label ?? top.vehicle.board}${stage ? ` — ${stage.label}` : ''}`,
+        cost,
+        actionLabel: 'View Vehicle',
+        vehicleId: top.vehicle.id,
+        board: top.vehicle.board,
+      });
+    }
+
+    const waitingVehicles = vehicles.filter((v) => !v.completed && v.title_status === 'waiting' && v.title_status_updated_at);
+    if (waitingVehicles.length > 0) {
+      const avgWaitDays =
+        waitingVehicles.reduce((sum, v) => sum + (Date.now() - new Date(v.title_status_updated_at!).getTime()) / 86400000, 0) /
+        waitingVehicles.length;
+      issueCandidates.push({
+        title: 'Waiting on Title',
+        badge: `Avg ${avgWaitDays.toFixed(1)} Days`,
+        sublabel: `${waitingVehicles.length} vehicle${waitingVehicles.length === 1 ? '' : 's'} — paperwork needed`,
+        cost: waitingVehicles.length * blendedDailyRate,
+        actionLabel: 'View Vehicles',
+        vehicleId: waitingVehicles[0].id,
+        board: waitingVehicles[0].board,
+      });
+    }
+
+    if (bottleneck) {
+      const bLabel = boards.find((b) => b.key === bottleneck.board)?.stages.find((s) => s.key === bottleneck.stage)?.label ?? bottleneck.stage;
+      const impact = stageImpact.find((s) => s.key === bottleneck.stage);
+      const target = vehicles.find((v) => !v.completed && v.board === bottleneck.board && v.stage === bottleneck.stage);
+      if (impact && target) {
+        issueCandidates.push({
+          title: `${bLabel} Bottleneck`,
+          badge: `Avg ${impact.avgDays !== null ? impact.avgDays.toFixed(1) : '—'} Days`,
+          sublabel: `Target ${yellowDays} Days · ${impact.waitingCount} vehicle${impact.waitingCount === 1 ? '' : 's'}`,
+          cost: impact.cost,
+          actionLabel: 'View Board',
+          vehicleId: target.id,
+          board: bottleneck.board,
+        });
+      }
+    }
+
+    const actionIssues = issueCandidates.sort((a, b) => b.cost - a.cost).slice(0, 3);
+
+    // ── Money Snapshot extras ────────────────────────────────────────────
+    const monthlyProjection = blendedDailyRate * mainBoardActive * 30;
+    const moneySavedThisMonth = carryingCostChangeVsPrevious !== null && carryingCostChangeVsPrevious < 0 ? -carryingCostChangeVsPrevious : 0;
+
+    // ── How to Save More ─────────────────────────────────────────────────
+    // Same underlying data as the Action Center issues above, reframed as
+    // a specific action with a dollar estimate attached, instead of just
+    // stating the problem and leaving the math to whoever's reading it.
+    const saveMoreTips: { icon: string; title: string; text: string }[] = [];
+    if (bottleneck) {
+      const bLabel = boards.find((b) => b.key === bottleneck.board)?.stages.find((s) => s.key === bottleneck.stage)?.label ?? bottleneck.stage;
+      const count = stageImpact.find((s) => s.key === bottleneck.stage)?.waitingCount ?? 0;
+      if (count > 0) {
+        saveMoreTips.push({
+          icon: '⏱️',
+          title: `Reduce ${bLabel} Time`,
+          text: `If ${bLabel} averaged 1 day faster, that's about $${(count * blendedDailyRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}/month.`,
+        });
+      }
+    }
+    if (waitingVehicles.length > 0) {
+      saveMoreTips.push({
+        icon: '📄',
+        title: 'Speed Up Titles',
+        text: `Clearing ${waitingVehicles.length} pending title${waitingVehicles.length === 1 ? '' : 's'} could save about $${(waitingVehicles.length * blendedDailyRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}/month.`,
+      });
+    }
+    const secondStage = stageImpact.filter((s) => s.key !== bottleneck?.stage)[0];
+    if (secondStage && secondStage.cost > 1) {
+      saveMoreTips.push({
+        icon: '📸',
+        title: `Watch ${secondStage.label}`,
+        text: `${secondStage.waitingCount} vehicle${secondStage.waitingCount === 1 ? '' : 's'} here — about $${secondStage.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })} in carrying cost so far.`,
+      });
+    }
+
+    // ── Performance Overview extra ───────────────────────────────────────
+    const activeStageDays = stageHealth.map((s) => s.avgDays).filter((d): d is number => d !== null);
+    const avgStageTime = activeStageDays.length > 0 ? activeStageDays.reduce((a, b) => a + b, 0) / activeStageDays.length : null;
+
     return {
       currentCounts,
       avgDaysFor,
@@ -813,6 +919,11 @@ export default function AnalyticsPage({
       waitingOnTitleCount,
       wins,
       weeklyTrend,
+      actionIssues,
+      monthlyProjection,
+      moneySavedThisMonth,
+      saveMoreTips,
+      avgStageTime,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vehicles, history, boards, yellowDays, redDays, newRatePerDay, usedRatePerDay, range, customStart, customEnd]);
@@ -1119,11 +1230,11 @@ ${stats.todaysPriorities.length > 0 ? `
       {loading ? (
         <p className="text-steel text-sm p-4">Loading…</p>
       ) : (
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {/* Time-sensitive callouts only — nothing permanent lives here,
               so this stays empty (and invisible) most of the time. */}
           {stats.waitingOnTitleCount > 0 && (
-            <div className="flex items-center gap-2 bg-signal-amber/10 border border-signal-amber/30 rounded-xl px-3 py-2.5 mb-3">
+            <div className="flex items-center gap-2 bg-signal-amber/10 border border-signal-amber/30 rounded-xl px-3 py-2.5">
               <span className="text-base">🟡</span>
               <p className="text-sm text-ink">
                 {stats.waitingOnTitleCount} vehicle{stats.waitingOnTitleCount === 1 ? ' is' : 's are'} waiting on
@@ -1131,472 +1242,266 @@ ${stats.todaysPriorities.length > 0 ? `
               </p>
             </div>
           )}
-          {stats.carryingCostChangeVsPrevious !== null && stats.carryingCostChangeVsPrevious > 0 && (
-            <div className="flex items-center gap-2 bg-signal-red/10 border border-signal-red/30 rounded-xl px-3 py-2.5 mb-3">
-              <span className="text-base">🔴</span>
-              <p className="text-sm text-ink">
-                Carrying cost is up $
-                {stats.carryingCostChangeVsPrevious.toLocaleString(undefined, { maximumFractionDigits: 0 })} vs. the
-                previous period.
-              </p>
+
+          {/* ACTION CENTER — mixes individual vehicles and category-level
+              problems (a stage backing up, titles piling up), ranked
+              together by real dollar impact. */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="font-display text-base font-bold text-ink">Action Center</h2>
+              <button
+                onClick={() => setPrioritiesModalOpen(true)}
+                className="text-signal-blue text-xs font-medium whitespace-nowrap"
+              >
+                View All Issues →
+              </button>
+            </div>
+            <p className="text-xs text-steel mb-2.5">Top items that need your attention right now</p>
+
+            {stats.actionIssues.length > 0 ? (
+              <div className="space-y-2.5">
+                {stats.actionIssues.map((issue, i) => (
+                  <div
+                    key={i}
+                    className={`bg-white border-l-4 rounded-lg p-3 shadow-sm ${
+                      i === 0 ? 'border-signal-red' : 'border-signal-amber'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <p className="font-display font-semibold text-ink text-sm truncate">{issue.title}</p>
+                      <span
+                        className={`flex-shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                          i === 0 ? 'bg-signal-red/10 text-signal-red' : 'bg-signal-amber/10 text-signal-amber'
+                        }`}
+                      >
+                        {issue.badge}
+                      </span>
+                    </div>
+                    <p className="text-xs text-steel mb-2">{issue.sublabel}</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-display font-bold text-ink tabular">
+                        Est. Cost: ${issue.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </span>
+                      <button
+                        onClick={() => issue.vehicleId && issue.board && onNavigateToVehicle?.(issue.vehicleId, issue.board)}
+                        disabled={!issue.vehicleId || !onNavigateToVehicle}
+                        className="text-signal-blue text-xs font-semibold border border-signal-blue rounded-full px-3 py-1"
+                      >
+                        {issue.actionLabel}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="w-full bg-signal-green/10 border border-signal-green/30 rounded-xl p-4">
+                <p className="text-sm text-ink font-medium">🟢 Nothing needs immediate attention right now.</p>
+              </div>
+            )}
+          </div>
+
+          {/* MONEY SNAPSHOT */}
+          <div>
+            <h2 className="font-display text-base font-bold text-ink mb-0.5">Money Snapshot</h2>
+            <p className="text-xs text-steel mb-2.5">Live carrying cost and savings opportunity</p>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="bg-white border border-gray-200 rounded-lg p-3">
+                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Current Carrying Cost</p>
+                <p className="font-display text-xl font-bold text-ink tabular">
+                  ${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-[11px] text-steel tabular">${stats.blendedDailyRate.toFixed(0)} / day</p>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-lg p-3">
+                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Potential Savings</p>
+                <p className="font-display text-xl font-bold text-signal-blue tabular">
+                  ${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-[11px] text-steel">If all stages hit target</p>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-lg p-3">
+                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Monthly Projection</p>
+                <p className="font-display text-xl font-bold text-ink tabular">
+                  ${stats.monthlyProjection.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-[11px] text-steel">At current pace</p>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-lg p-3">
+                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Money Saved</p>
+                <p className="font-display text-xl font-bold text-signal-green tabular">
+                  ${stats.moneySavedThisMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-[11px] text-steel">vs. last period</p>
+              </div>
+            </div>
+          </div>
+
+          {/* HOW TO SAVE MORE — same data as Action Center, reframed as a
+              specific action with a dollar estimate attached. */}
+          {stats.saveMoreTips.length > 0 && (
+            <div>
+              <h2 className="font-display text-base font-bold text-ink mb-2.5">How to Save More</h2>
+              <div className="space-y-2">
+                {stats.saveMoreTips.map((tip, i) => (
+                  <div key={i} className="flex items-start gap-3 bg-white border border-gray-200 rounded-lg p-3">
+                    <span className="text-lg flex-shrink-0">{tip.icon}</span>
+                    <div className="min-w-0">
+                      <p className="font-display font-semibold text-ink text-sm">{tip.title}</p>
+                      <p className="text-xs text-steel leading-snug">{tip.text}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* The landing view — four bold, tappable squares. Nothing else
-              lives here; every real number sits behind one of these
-              four, one tap away. Width capped on purpose so all four
-              stay visible without scrolling — scales up on larger
-              screens instead of staying pinned to a small mobile size. */}
-          <div className="grid grid-cols-2 gap-3 max-w-[380px] sm:max-w-2xl mx-auto">
-            <button
-              onClick={() => setExpandedZone('attention')}
-              className="aspect-square flex flex-col items-center justify-center gap-2.5 bg-ink rounded-2xl p-3 active:scale-[0.98] transition"
-            >
-              <div className="w-11 h-11 rounded-lg bg-signal-red/20 text-signal-red flex items-center justify-center">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 2C10 2 8.5 3.5 8.5 5.5V6.5C6 7.5 4.5 10 4.5 13V17L2.5 19V20H21.5V19L19.5 17V13C19.5 10 18 7.5 15.5 6.5V5.5C15.5 3.5 14 2 12 2Z" fill="currentColor" />
-                  <path d="M9.5 21C9.5 22.1 10.6 23 12 23C13.4 23 14.5 22.1 14.5 21H9.5Z" fill="currentColor" />
-                </svg>
+          {/* PERFORMANCE OVERVIEW — the gauge lives here, front and center. */}
+          <div>
+            <h2 className="font-display text-base font-bold text-ink mb-0.5">Performance Overview</h2>
+            <p className="text-xs text-steel mb-2.5">How your store is performing</p>
+            <div className="bg-ink rounded-2xl p-4 mb-2.5">
+              <div className="max-w-[220px] mx-auto">
+                <TurnRateGauge value={simulatedTurnRate ?? stats.avgTurnTime} yellowDays={yellowDays} redDays={redDays} />
               </div>
-              <p className="font-display text-sm font-semibold text-white text-center leading-tight">Needs Attention</p>
-            </button>
-
-            <button
-              onClick={() => setExpandedZone('turnrate')}
-              className="aspect-square flex flex-col items-center justify-center gap-1.5 bg-ink rounded-2xl p-3 active:scale-[0.98] transition"
-            >
-              <div className="w-20 h-11">
-                <TurnRateGauge value={stats.avgTurnTime} yellowDays={yellowDays} redDays={redDays} />
-              </div>
-              <p className="font-display text-sm font-semibold text-white text-center leading-tight">Turn Rate &amp; Cost</p>
-            </button>
-
-            <button
-              onClick={() => setExpandedZone('improvements')}
-              className="aspect-square flex flex-col items-center justify-center gap-2.5 bg-ink rounded-2xl p-3 active:scale-[0.98] transition"
-            >
-              <div className="w-11 h-11 rounded-lg bg-signal-amber/20 text-signal-amber flex items-center justify-center">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <path d="M4 12H17M17 12L12 7M17 12L12 17" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-              <p className="font-display text-sm font-semibold text-white text-center leading-tight">Improvements</p>
-            </button>
-
-            <button
-              onClick={() => setExpandedZone('deepdive')}
-              className="aspect-square flex flex-col items-center justify-center gap-2.5 bg-ink rounded-2xl p-3 active:scale-[0.98] transition"
-            >
-              <div className="w-11 h-11 rounded-lg bg-white/10 text-mist flex items-center justify-center">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <rect x="5" y="3" width="14" height="6" rx="1" stroke="currentColor" strokeWidth="2" />
-                  <rect x="5" y="10" width="14" height="6" rx="1" stroke="currentColor" strokeWidth="2" />
-                  <rect x="5" y="17" width="14" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
-                </svg>
-              </div>
-              <p className="font-display text-sm font-semibold text-white text-center leading-tight">Deep Dive</p>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {expandedZone !== null &&
-        createPortal(
-          <div className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center">
-            <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md modal-h-85 flex flex-col">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
-                <h2 className="font-display text-lg font-semibold text-ink">
-                  {expandedZone === 'attention' && 'Needs Attention'}
-                  {expandedZone === 'turnrate' && 'Turn Rate & Cost'}
-                  {expandedZone === 'improvements' && 'Improvements'}
-                  {expandedZone === 'deepdive' && 'Deep Dive'}
-                </h2>
-                <ModalCloseButton onClick={() => setExpandedZone(null)} />
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-5">
-                {expandedZone === 'attention' && (
-                  <>
-                    {stats.todaysPriorities.length > 0 ? (
-                      <div className="bg-ink rounded-2xl p-5">
-                        <div className="flex items-center justify-between mb-3 gap-2">
-                          <p className="font-display text-lg font-bold text-white leading-tight">
-                            {Math.min(3, stats.todaysPriorities.length)} Vehicle
-                            {Math.min(3, stats.todaysPriorities.length) === 1 ? '' : 's'} Need Attention Now
-                          </p>
-                          {stats.todaysPriorities.length > 3 && (
-                            <button
-                              onClick={() => { setExpandedZone(null); setPrioritiesModalOpen(true); }}
-                              className="text-mist text-xs flex-shrink-0 whitespace-nowrap"
-                            >
-                              +{stats.todaysPriorities.length - 3} more →
-                            </button>
-                          )}
-                        </div>
-                        <div className="space-y-2">
-                          {stats.todaysPriorities.slice(0, 3).map((p) => {
-                            const cost = carryingCostSoFar(p.vehicle, newRatePerDay, usedRatePerDay);
-                            return (
-                              <button
-                                key={p.vehicle.id}
-                                onClick={() => onNavigateToVehicle?.(p.vehicle.id, p.vehicle.board)}
-                                disabled={!onNavigateToVehicle}
-                                className="w-full text-left bg-white/[0.07] rounded-lg p-3 active:scale-[0.99] transition"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <p className="font-display font-semibold text-white text-sm truncate">
-                                    {vehicleShortLabel(p.vehicle)}
-                                  </p>
-                                  {cost > 0 && (
-                                    <span className="text-signal-amber font-display font-bold text-sm tabular flex-shrink-0">
-                                      ${cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-mist text-xs mt-0.5">{p.recommendedAction}</p>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="w-full bg-signal-green/10 border border-signal-green/30 rounded-2xl p-5">
-                        <p className="text-sm text-ink font-medium">🟢 Nothing needs immediate attention right now.</p>
-                      </div>
-                    )}
-                  </>
+              <p className="text-center font-display text-2xl font-bold text-white -mt-1">
+                {formatDays(simulatedTurnRate ?? stats.avgTurnTime)}
+              </p>
+              <p className="text-center text-mist text-xs">
+                {simulatedTurnRate !== null ? 'if turn rate were this' : 'Turn Rate'}
+                {simulatedTurnRate === null && stats.previousAvgTurnTime !== null && stats.avgTurnTime !== null && Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime) >= 0.1 && (
+                  <span className={stats.previousAvgTurnTime - stats.avgTurnTime > 0 ? 'text-signal-green' : 'text-signal-red'}>
+                    {' '}· {stats.previousAvgTurnTime - stats.avgTurnTime > 0 ? '↓' : '↑'}{' '}
+                    {Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime).toFixed(1)}d vs. last period
+                  </span>
                 )}
+              </p>
 
-                {expandedZone === 'turnrate' && (
-                  <>
-                    <div className="bg-ink rounded-2xl p-5">
-                      <div className="max-w-[200px] mx-auto">
-                        <TurnRateGauge
-                          value={simulatedTurnRate ?? stats.avgTurnTime}
-                          yellowDays={yellowDays}
-                          redDays={redDays}
-                        />
-                      </div>
-                      <p className="text-center font-display text-3xl font-bold text-white -mt-2">
-                        {formatDays(simulatedTurnRate ?? stats.avgTurnTime)}
+              {/* What-if simulator — dragging this moves the needle above
+                  and estimates the dollar impact, using this
+                  dealership's own configured rates. An estimate, same
+                  honest tone as the Opportunity Meter — not a promise. */}
+              <div className="border-t border-white/10 mt-3 pt-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={14}
+                  step={0.5}
+                  value={simulatedTurnRate ?? stats.avgTurnTime ?? 0}
+                  onChange={(e) => setSimulatedTurnRate(parseFloat(e.target.value))}
+                  className="w-full accent-signal-blue"
+                />
+                <div className="flex items-center justify-between text-[10px] text-mist mb-2">
+                  <span>0 days</span>
+                  <span>14 days</span>
+                </div>
+                {simulatedTurnRate !== null &&
+                  (() => {
+                    const currentAvg = stats.avgTurnTime;
+                    if (currentAvg === null) return null;
+                    const delta = simulatedTurnRate - currentAvg;
+                    const impact = delta * stats.blendedDailyRate * stats.completedInRange;
+                    return (
+                      <p className="text-center text-sm">
+                        <span className={impact < 0 ? 'text-signal-green font-semibold' : impact > 0 ? 'text-signal-red font-semibold' : 'text-mist'}>
+                          {Math.abs(impact) < 1
+                            ? 'About the same as today'
+                            : `~$${Math.abs(impact).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${impact < 0 ? 'saved' : 'more'} vs. today`}
+                        </span>
+                        <br />
+                        <span className="text-mist text-xs">
+                          estimate across {stats.completedInRange} vehicle{stats.completedInRange === 1 ? '' : 's'} this period
+                        </span>
                       </p>
-                      <p className="text-center text-mist text-xs mb-4">
-                        {simulatedTurnRate !== null ? 'if turn rate were this' : 'average turn rate'}
-                      </p>
-
-                      {/* What-if simulator — dragging this slider moves the
-                          needle above and estimates the dollar impact,
-                          using this dealership's own configured rates.
-                          Framed clearly as an estimate, same as the
-                          Opportunity Meter — not a promise. */}
-                      <div className="border-t border-white/10 pt-4">
-                        <input
-                          type="range"
-                          min={0}
-                          max={14}
-                          step={0.5}
-                          value={simulatedTurnRate ?? stats.avgTurnTime ?? 0}
-                          onChange={(e) => setSimulatedTurnRate(parseFloat(e.target.value))}
-                          className="w-full accent-signal-blue"
-                        />
-                        <div className="flex items-center justify-between text-[10px] text-mist mb-2">
-                          <span>0 days</span>
-                          <span>14 days</span>
-                        </div>
-                        {(() => {
-                          const currentAvg = stats.avgTurnTime;
-                          if (simulatedTurnRate === null || currentAvg === null) return null;
-                          const delta = simulatedTurnRate - currentAvg;
-                          const impact = delta * stats.blendedDailyRate * stats.completedInRange;
-                          return (
-                            <p className="text-center text-sm">
-                              <span className={impact < 0 ? 'text-signal-green font-semibold' : impact > 0 ? 'text-signal-red font-semibold' : 'text-mist'}>
-                                {Math.abs(impact) < 1
-                                  ? 'About the same as today'
-                                  : `~$${Math.abs(impact).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${impact < 0 ? 'saved' : 'more'} vs. today`}
-                              </span>
-                              <br />
-                              <span className="text-mist text-xs">
-                                estimate across {stats.completedInRange} vehicle{stats.completedInRange === 1 ? '' : 's'} this period
-                              </span>
-                            </p>
-                          );
-                        })()}
-                        {simulatedTurnRate !== null && (
-                          <button
-                            onClick={() => setSimulatedTurnRate(null)}
-                            className="w-full text-center text-signal-blue text-xs font-medium mt-2"
-                          >
-                            Reset to current
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2.5">
-                      <OverviewTile
-                        icon="⏱️"
-                        accent="blue"
-                        value={formatDays(stats.avgTurnTime)}
-                        label="Turn Rate"
-                        trend={
-                          stats.previousAvgTurnTime !== null && stats.avgTurnTime !== null
-                            ? {
-                                direction: stats.previousAvgTurnTime - stats.avgTurnTime > 0 ? 'up' : 'down',
-                                good: stats.previousAvgTurnTime - stats.avgTurnTime > 0,
-                                label:
-                                  Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime) < 0.1
-                                    ? 'Steady'
-                                    : `${Math.abs(stats.previousAvgTurnTime - stats.avgTurnTime).toFixed(1)}d vs. last period`,
-                              }
-                            : undefined
-                        }
-                      />
-                      <OverviewTile
-                        icon="💰"
-                        accent="amber"
-                        value={`$${stats.totalCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
-                        label="Carrying Cost"
-                        sublabel={
-                          stats.opportunityAmount > 1
-                            ? `~$${stats.opportunityAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} avoidable if every vehicle stayed on target`
-                            : undefined
-                        }
-                      />
-                      <OverviewTile
-                        icon="🚧"
-                        accent="red"
-                        value={bottleneckLabel()}
-                        label="Bottleneck"
-                        sublabel={stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} avg` : undefined}
-                      />
-                    </div>
-
-                    {stats.wins.length > 0 && (
-                      <div>
-                        <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
-                          Wins This Month
-                        </p>
-                        <div className="bg-signal-green/5 border border-signal-green/20 rounded-lg divide-y divide-signal-green/10">
-                          {stats.wins.map((item, i) => (
-                            <div key={i} className="flex items-start gap-2.5 px-3 py-2.5">
-                              <span className="text-base leading-none flex-shrink-0 mt-0.5">{item.emoji}</span>
-                              <p className="text-sm text-ink leading-snug">{item.text}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <CompletionsTrendChart data={stats.weeklyTrend} />
-                  </>
-                )}
-
-                {expandedZone === 'improvements' && (
-                  <>
-                    {stats.stageImpact.length > 0 && (
-                      <div>
-                        <p className="text-[11px] text-steel uppercase tracking-wide font-semibold mb-1.5">
-                          Where is the money stuck?
-                        </p>
-                        <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                          {stats.stageImpact.map((s) => {
-                            const target = vehicles.find((v) => !v.completed && v.board === 'main' && v.stage === s.key);
-                            return (
-                              <button
-                                key={s.key}
-                                onClick={() => target && onNavigateToVehicle?.(target.id, 'main')}
-                                disabled={!target || !onNavigateToVehicle}
-                                className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-asphalt disabled:hover:bg-transparent"
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <span
-                                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                      s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
-                                    }`}
-                                  />
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium text-ink truncate">{s.label}</p>
-                                    <p className="text-[11px] text-steel tabular">
-                                      {formatDays(s.avgDays)} avg · {s.waitingCount} waiting
-                                    </p>
-                                  </div>
-                                </div>
-                                <span className="text-sm font-semibold text-ink tabular flex-shrink-0">
-                                  ${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="border border-signal-amber rounded-lg p-3">
-                        <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Bottleneck stage</p>
-                        <p className="font-display font-semibold text-ink">{bottleneckLabel()}</p>
-                        <p className="text-xs text-steel tabular">
-                          {stats.bottleneck ? `${formatDays(stats.bottleneck.avgDays)} average to get through` : '—'}
-                        </p>
-                      </div>
-                      <div className="border border-gray-200 rounded-lg p-3">
-                        <p className="text-[11px] uppercase tracking-wide text-steel mb-1">Longest aging, active now</p>
-                        <p className="font-display font-semibold text-ink truncate">
-                          {stats.longestAging?.label || 'None'}
-                        </p>
-                        <p className="text-xs text-steel tabular">
-                          {stats.longestAging ? formatDays(stats.longestAging.days) : '—'}
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {expandedZone === 'deepdive' && (
-                  <>
-                    {stats.stageHealth.length > 0 && (
-                      <div>
-                        <h2 className="font-display font-semibold text-ink text-sm mb-2">Stage Health — Main Board</h2>
-                        <div className="space-y-2">
-                          {stats.stageHealth.map((s) => (
-                            <div key={s.key} className="border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-center justify-between gap-2 mb-1">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span
-                                    className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                                      s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
-                                    }`}
-                                  />
-                                  <p className="font-display font-semibold text-ink truncate">{s.label}</p>
-                                </div>
-                                <span className="font-display font-bold text-ink tabular flex-shrink-0">{s.health}</span>
-                              </div>
-                              <p className="text-xs text-steel tabular">
-                                {formatDays(s.avgDays)} average, active now · {s.waitingCount} waiting
-                              </p>
-                              {(s.approachingCount > 0 || s.exceedingCount > 0) && (
-                                <p className="text-xs tabular mt-0.5">
-                                  {s.approachingCount > 0 && (
-                                    <span className="text-signal-amber font-medium">
-                                      {s.approachingCount} approaching target
-                                    </span>
-                                  )}
-                                  {s.approachingCount > 0 && s.exceedingCount > 0 && <span className="text-steel"> · </span>}
-                                  {s.exceedingCount > 0 && (
-                                    <span className="text-signal-red font-medium">{s.exceedingCount} over target</span>
-                                  )}
-                                </p>
-                              )}
-                              <p className="text-xs text-steel mt-1">{s.recommendation}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-asphalt rounded-lg p-3">
-                        <p className="text-2xl font-display font-bold text-ink tabular">{stats.mainBoardActive}</p>
-                        <p className="text-xs text-steel">Active on Main Board</p>
-                      </div>
-                      <div className="bg-asphalt rounded-lg p-3">
-                        <p className="text-2xl font-display font-bold text-ink tabular">{stats.addedInRange}</p>
-                        <p className="text-xs text-steel">Added in this period</p>
-                      </div>
-                      <div className="bg-asphalt rounded-lg p-3">
-                        <p className="text-2xl font-display font-bold text-ink tabular">{stats.completedInRange}</p>
-                        <p className="text-xs text-steel">Completed in this period</p>
-                      </div>
-                      <div className="bg-asphalt rounded-lg p-3">
-                        <p
-                          className={`text-2xl font-display font-bold tabular ${stats.agingRedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
-                        >
-                          {stats.agingRedCount}
-                        </p>
-                        <p className="text-xs text-steel">Aging red right now</p>
-                      </div>
-                      <div className="bg-asphalt rounded-lg p-3">
-                        <p
-                          className={`text-2xl font-display font-bold tabular ${stats.damagedCount > 0 ? 'text-signal-red' : 'text-ink'}`}
-                        >
-                          {stats.damagedCount}
-                        </p>
-                        <p className="text-xs text-steel">
-                          Flagged with damage{stats.damageRate !== null && ` (${stats.damageRate.toFixed(0)}%)`}
-                        </p>
-                      </div>
-                      <div className="bg-asphalt rounded-lg p-3">
-                        <p
-                          className={`text-2xl font-display font-bold tabular ${stats.overdueLoaners > 0 ? 'text-signal-red' : 'text-ink'}`}
-                        >
-                          {stats.overdueLoaners}
-                        </p>
-                        <p className="text-xs text-steel">Loaners overdue</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-asphalt rounded-lg p-3">
-                        <p className="text-2xl font-display font-bold text-ink tabular">
-                          {stats.avgNewCarryingCost !== null
-                            ? `$${stats.avgNewCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                            : '—'}
-                        </p>
-                        <p className="text-xs text-steel">Avg. cost — new vehicles</p>
-                      </div>
-                      <div className="bg-asphalt rounded-lg p-3">
-                        <p className="text-2xl font-display font-bold text-ink tabular">
-                          {stats.avgUsedCarryingCost !== null
-                            ? `$${stats.avgUsedCarryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                            : '—'}
-                        </p>
-                        <p className="text-xs text-steel">Avg. cost — used vehicles</p>
-                      </div>
-                    </div>
-
-                    <div className="bg-ink rounded-xl p-5 text-white">
-                      <p className="text-xs text-mist uppercase tracking-wide mb-1">Avg. Transit Time (Inbound → Service)</p>
-                      <p className="font-display text-2xl font-semibold">{formatDays(stats.avgTransitTime)}</p>
-                      <div className="flex gap-4 mt-2 text-xs text-mist">
-                        <span>Fastest turn: {formatDays(stats.fastestTurn)}</span>
-                        <span>Slowest turn: {formatDays(stats.slowestTurn)}</span>
-                      </div>
-                    </div>
-
-                    {boards.map((board) => (
-                      <div key={board.id}>
-                        <h2 className="font-display font-semibold text-ink text-sm mb-2">{board.label}</h2>
-                        <div className="border border-gray-200 rounded-lg overflow-hidden">
-                          <div className="grid grid-cols-3 bg-asphalt text-[11px] uppercase tracking-wide text-steel px-3 py-2">
-                            <span>Stage</span>
-                            <span className="text-center">Now</span>
-                            <span className="text-right">Avg. time</span>
-                          </div>
-                          {board.stages.map((stage) => (
-                            <div
-                              key={stage.key}
-                              className="grid grid-cols-3 px-3 py-2 border-t border-gray-100 text-sm items-center"
-                            >
-                              <span className="text-ink">{stage.label}</span>
-                              <span className="text-center tabular text-steel">
-                                {stats.currentCounts.get(`${board.key}::${stage.key}`) ?? 0}
-                              </span>
-                              <span className="text-right tabular text-steel">
-                                {formatDays(stats.avgDaysFor(board.key, stage.key))}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </>
+                    );
+                  })()}
+                {simulatedTurnRate !== null && (
+                  <button
+                    onClick={() => setSimulatedTurnRate(null)}
+                    className="w-full text-center text-signal-blue text-xs font-medium mt-2"
+                  >
+                    Reset to current
+                  </button>
                 )}
               </div>
             </div>
-          </div>,
-          document.body
-        )}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="bg-white border border-gray-200 rounded-lg p-3">
+                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Vehicles Completed</p>
+                <p className="font-display text-xl font-bold text-ink tabular">{stats.completedInRange}</p>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-lg p-3">
+                <p className="text-[11px] text-steel uppercase tracking-wide mb-1">Average Stage Time</p>
+                <p className="font-display text-xl font-bold text-ink tabular">{formatDays(stats.avgStageTime)}</p>
+              </div>
+            </div>
+            <div className="mt-2.5">
+              <CompletionsTrendChart data={stats.weeklyTrend} />
+            </div>
+          </div>
+
+          {/* DEPARTMENT HEALTH — table, sorted by dollar impact so the
+              most expensive stage is always the first row. */}
+          {stats.stageImpact.length > 0 && (
+            <div>
+              <h2 className="font-display text-base font-bold text-ink mb-2.5">Department Health</h2>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="grid grid-cols-[1.4fr_0.7fr_0.6fr_0.9fr] bg-asphalt text-[10px] uppercase tracking-wide text-steel px-2.5 py-2">
+                  <span>Stage</span>
+                  <span className="text-right">Avg</span>
+                  <span className="text-right">vs Tgt</span>
+                  <span className="text-right">Impact</span>
+                </div>
+                {stats.stageImpact.map((s) => {
+                  const vsTarget = s.avgDays !== null ? s.avgDays - yellowDays : null;
+                  const maxCost = stats.stageImpact[0]?.cost || 1;
+                  return (
+                    <div key={s.key} className="border-t border-gray-100 px-2.5 py-2">
+                      <div className="grid grid-cols-[1.4fr_0.7fr_0.6fr_0.9fr] items-center text-xs">
+                        <span className="text-ink font-medium truncate">{s.label}</span>
+                        <span className="text-right tabular text-steel">{formatDays(s.avgDays)}</span>
+                        <span
+                          className={`text-right tabular font-medium ${
+                            vsTarget === null ? 'text-steel' : vsTarget > 0 ? 'text-signal-red' : 'text-signal-green'
+                          }`}
+                        >
+                          {vsTarget !== null ? `${vsTarget > 0 ? '+' : ''}${vsTarget.toFixed(1)}` : '—'}
+                        </span>
+                        <span className="text-right tabular font-semibold text-ink">
+                          ${s.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-gray-100 rounded-full mt-1.5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            s.indicator === 'green' ? 'bg-signal-green' : s.indicator === 'yellow' ? 'bg-signal-amber' : 'bg-signal-red'
+                          }`}
+                          style={{ width: `${Math.min(100, (s.cost / maxCost) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* LONGEST AGING VEHICLE */}
+          {stats.longestAging && (
+            <div>
+              <h2 className="font-display text-base font-bold text-ink mb-2.5">Longest Aging Vehicle</h2>
+              <div className="bg-white border border-gray-200 rounded-lg p-3 flex items-center gap-3">
+                <div className="w-12 h-12 rounded-lg bg-asphalt flex items-center justify-center flex-shrink-0 text-2xl">
+                  🚗
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-display font-semibold text-ink text-sm truncate">{stats.longestAging.label}</p>
+                  <p className="text-xs text-steel tabular">{formatDays(stats.longestAging.days)} in current stage</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {prioritiesModalOpen && (
         <TodaysPrioritiesModal
