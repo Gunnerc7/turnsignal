@@ -196,35 +196,6 @@ export default function Dashboard() {
                   onClick={() => setMenuOpen(false)}
                 />
                 <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lift border border-gray-200 py-1 w-44 z-50">
-                  {currentDealershipId && (
-                    <button
-                      onClick={() => {
-                        setInviteOpen(true);
-                        setMenuOpen(false);
-                      }}
-                      className="w-full text-left text-sm text-ink px-3 py-2.5 hover:bg-asphalt"
-                    >
-                      Invite
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setNameOpen(true);
-                      setMenuOpen(false);
-                    }}
-                    className="w-full text-left text-sm text-ink px-3 py-2.5 hover:bg-asphalt"
-                  >
-                    Name
-                  </button>
-                  <button
-                    onClick={() => {
-                      setPasswordOpen(true);
-                      setMenuOpen(false);
-                    }}
-                    className="w-full text-left text-sm text-ink px-3 py-2.5 hover:bg-asphalt"
-                  >
-                    Password
-                  </button>
                   {viewingSiblingStore && (
                     <button
                       onClick={() => {
@@ -275,6 +246,9 @@ export default function Dashboard() {
               setViewingAsOwner({ ...dealership, group_id: relevantGroupId });
               setNavigateTarget({ vehicleId, board });
             }}
+            onOpenInvite={() => setInviteOpen(true)}
+            onOpenName={() => setNameOpen(true)}
+            onOpenPassword={() => setPasswordOpen(true)}
           />
         ) : (
           <DealershipPicker onSelect={setViewingAsOwner} />
@@ -300,6 +274,9 @@ export default function Dashboard() {
             setViewingAsManager(dealership);
             setNavigateTarget({ vehicleId, board });
           }}
+          onOpenInvite={() => setInviteOpen(true)}
+          onOpenName={() => setNameOpen(true)}
+          onOpenPassword={() => setPasswordOpen(true)}
         />
       ) : (
         <p className="p-4 text-signal-red text-sm">
