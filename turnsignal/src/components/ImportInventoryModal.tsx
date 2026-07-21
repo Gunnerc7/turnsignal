@@ -27,6 +27,9 @@ const HEADER_ALIASES: Record<string, string[]> = {
   stock: ['stock', 'stock #', 'stock number'],
   type: ['type'],
   year: ['year'],
+  make: ['make'],
+  model: ['model'],
+  trim: ['trim'],
   makeModelTrim: ['make | model | trim', 'make/model/trim', 'make model trim'],
   mileage: ['mileage', 'miles'],
   color: ['ext. color desc.', 'ext color desc', 'exterior color', 'color'],
@@ -46,6 +49,21 @@ function buildColumnMap(headers: string[]): Record<string, string> {
     }
   }
   return map;
+}
+
+function splitMakeModelTrim(raw: string): { make: string; model: string; trim: string } {
+  const pipeSplit = raw.split('|').map((s) => s.trim()).filter((s) => s !== '');
+  if (pipeSplit.length > 1) {
+    return { make: pipeSplit[0] ?? '', model: pipeSplit[1] ?? '', trim: pipeSplit[2] ?? '' };
+  }
+  // No pipe found — most likely one inconsistent record in an otherwise
+  // well-formatted file, not a systemic problem. Can't reliably tell
+  // where Model ends and Trim begins without a delimiter, but Make is
+  // reliably just the first word for the common single-word brands this
+  // is built around — better to get that one field right and leave the
+  // rest for a quick manual fix than to dump everything into Make.
+  const parts = raw.trim().split(/\s+/);
+  return { make: parts[0] ?? '', model: parts.slice(1).join(' '), trim: '' };
 }
 
 export default function ImportInventoryModal({
@@ -91,16 +109,27 @@ export default function ImportInventoryModal({
 
       const rows: ParsedRow[] = raw
         .map((r) => {
-          const mmt = String(r[colMap.makeModelTrim] ?? '').split('|').map((s) => s.trim());
+          // Separate Make/Model/Trim columns, when the file has them,
+          // are unambiguous and always preferred — no guessing needed.
+          // Falls back to splitting a combined column for files still
+          // using that older format.
+          const hasSeparateColumns = Boolean(colMap.make || colMap.model);
+          const mmt = hasSeparateColumns
+            ? {
+                make: String(r[colMap.make] ?? '').trim(),
+                model: String(r[colMap.model] ?? '').trim(),
+                trim: String(r[colMap.trim] ?? '').trim(),
+              }
+            : splitMakeModelTrim(String(r[colMap.makeModelTrim] ?? ''));
           const yearRaw = r[colMap.year];
           const mileageRaw = r[colMap.mileage];
           return {
             stock: String(r[colMap.stock] ?? '').trim(),
             type: String(r[colMap.type] ?? '').trim(),
             year: yearRaw !== '' && yearRaw != null ? parseInt(String(yearRaw), 10) : null,
-            make: mmt[0] ?? '',
-            model: mmt[1] ?? '',
-            trim: mmt[2] ?? '',
+            make: mmt.make,
+            model: mmt.model,
+            trim: mmt.trim,
             mileage: mileageRaw !== '' && mileageRaw != null ? parseInt(String(mileageRaw), 10) : null,
             color: String(r[colMap.color] ?? '').trim(),
             vin: String(r[colMap.vin] ?? '').trim().toUpperCase(),
