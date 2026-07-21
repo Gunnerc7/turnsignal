@@ -142,28 +142,76 @@ export default function ImportInventoryModal({
       const otherRows = rows.filter((r) => !r.state.toLowerCase().includes('live'));
 
       if (liveRows.length > 0) {
-        const { error: upsertError } = await supabase.from('live_inventory').upsert(
-          liveRows.map((r) => ({
-            dealership_id: dealershipId,
-            stock_number: r.stock || null,
-            vehicle_type: r.type || null,
-            year: r.year,
-            make: r.make || null,
-            model: r.model || null,
-            trim: r.trim || null,
-            mileage: r.mileage,
-            color: r.color || null,
-            vin: r.vin,
-            dms_state: r.state || null,
-            imported_at: new Date().toISOString(),
-            removed_at: null,
-          })),
-          { onConflict: 'dealership_id,vin' }
+        // Stock number is checked first, separately from the VIN-keyed
+        // upsert below — this is exactly the gap that let a duplicate
+        // through before: a row with the same vehicle but a missing or
+        // different VIN than what's already on file would never match
+        // on VIN alone, so it looked "new" when it wasn't.
+        const { data: existingLiveForDupeCheck } = await supabase
+          .from('live_inventory')
+          .select('id, vin, stock_number')
+          .eq('dealership_id', dealershipId)
+          .is('removed_at', null);
+        const stockToExisting = new Map(
+          (existingLiveForDupeCheck ?? [])
+            .filter((row) => row.stock_number)
+            .map((row) => [row.stock_number!.trim().toUpperCase(), row])
         );
-        if (upsertError) {
-          setError(upsertError.message);
-          setPhase('error');
-          return;
+
+        const toUpsertByVin: typeof liveRows = [];
+        for (const r of liveRows) {
+          const stockKey = r.stock.trim().toUpperCase();
+          const existingByStock = stockKey ? stockToExisting.get(stockKey) : undefined;
+          if (existingByStock && (existingByStock.vin ?? '').toUpperCase() !== r.vin) {
+            // Same stock number, different (or missing) VIN on file —
+            // update that existing row directly rather than let a
+            // VIN-keyed upsert create a second entry for the same truck.
+            await supabase
+              .from('live_inventory')
+              .update({
+                stock_number: r.stock || null,
+                vehicle_type: r.type || null,
+                year: r.year,
+                make: r.make || null,
+                model: r.model || null,
+                trim: r.trim || null,
+                mileage: r.mileage,
+                color: r.color || null,
+                vin: r.vin,
+                dms_state: r.state || null,
+                imported_at: new Date().toISOString(),
+                removed_at: null,
+              })
+              .eq('id', existingByStock.id);
+          } else {
+            toUpsertByVin.push(r);
+          }
+        }
+
+        if (toUpsertByVin.length > 0) {
+          const { error: upsertError } = await supabase.from('live_inventory').upsert(
+            toUpsertByVin.map((r) => ({
+              dealership_id: dealershipId,
+              stock_number: r.stock || null,
+              vehicle_type: r.type || null,
+              year: r.year,
+              make: r.make || null,
+              model: r.model || null,
+              trim: r.trim || null,
+              mileage: r.mileage,
+              color: r.color || null,
+              vin: r.vin,
+              dms_state: r.state || null,
+              imported_at: new Date().toISOString(),
+              removed_at: null,
+            })),
+            { onConflict: 'dealership_id,vin' }
+          );
+          if (upsertError) {
+            setError(upsertError.message);
+            setPhase('error');
+            return;
+          }
         }
       }
       setLiveCount(liveRows.length);
@@ -178,9 +226,34 @@ export default function ImportInventoryModal({
       setDroppedOff(dropped);
       setDroppedOffChecked(new Set(dropped.map((d) => d.id)));
 
-      const { data: existingVehicles } = await supabase.from('vehicles').select('vin').eq('dealership_id', dealershipId);
+      const { data: existingVehicles } = await supabase
+        .from('vehicles')
+        .select('id, vin, stock_number')
+        .eq('dealership_id', dealershipId);
       const trackedVins = new Set((existingVehicles ?? []).map((v) => (v.vin ?? '').toUpperCase()).filter(Boolean));
-      const arrivals = otherRows.filter((r) => !trackedVins.has(r.vin));
+      const stockToVehicle = new Map(
+        (existingVehicles ?? [])
+          .filter((v) => v.stock_number)
+          .map((v) => [v.stock_number!.trim().toUpperCase(), v])
+      );
+
+      const arrivals: typeof otherRows = [];
+      for (const r of otherRows) {
+        if (trackedVins.has(r.vin)) continue;
+        const stockKey = r.stock.trim().toUpperCase();
+        const existingByStock = stockKey ? stockToVehicle.get(stockKey) : undefined;
+        if (existingByStock) {
+          // Same stock number already tracked — not a new arrival, just
+          // possibly missing its VIN. Backfill only if it's genuinely
+          // empty on the existing record; never overwrite a value
+          // that's already there.
+          if (!existingByStock.vin && r.vin) {
+            await supabase.from('vehicles').update({ vin: r.vin }).eq('id', existingByStock.id);
+          }
+          continue;
+        }
+        arrivals.push(r);
+      }
       setNewArrivals(arrivals);
 
       if (dropped.length > 0) {
