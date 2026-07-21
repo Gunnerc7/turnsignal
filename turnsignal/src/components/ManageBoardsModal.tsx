@@ -60,7 +60,14 @@ export default function ManageBoardsModal({
   async function addStage(board: BoardConfig) {
     const label = window.prompt('Name this new column:');
     if (!label || !label.trim()) return;
-    const newStage: StageConfig = { key: slugify(label), label: label.trim() };
+    const newKey = slugify(label);
+    if (board.stages.some((s) => s.key === newKey)) {
+      window.alert(
+        `A column with a name too similar to "${label.trim()}" already exists on this board — use something more specific (e.g. "Final Photos" instead of "Photos" if you already have one).`
+      );
+      return;
+    }
+    const newStage: StageConfig = { key: newKey, label: label.trim() };
     const updatedStages = [...board.stages, newStage];
     setError(null);
     const { error: updateError } = await supabase
@@ -112,7 +119,12 @@ export default function ManageBoardsModal({
       return;
     }
 
-    const confirmed = window.confirm('Delete this column? This cannot be undone.');
+    const isSpecialFirstStage = board.key === 'main' && stageKey === 'inbound_trade_in';
+    const confirmed = window.confirm(
+      isSpecialFirstStage
+        ? "This is the column where new vehicles wait before recon really starts — it's the only stage that doesn't get aging colors, and for new vehicles, carrying cost doesn't start counting until they leave it. Deleting it means whatever becomes your new first stage will start the clock immediately instead. Delete anyway?"
+        : 'Delete this column? This cannot be undone.'
+    );
     if (!confirmed) return;
 
     const updatedStages = board.stages.filter((s) => s.key !== stageKey);
@@ -129,6 +141,13 @@ export default function ManageBoardsModal({
   }
 
   async function deleteBoard(board: BoardConfig) {
+    if (board.key === 'main' || board.key === 'loaners') {
+      window.alert(
+        `The ${board.label} board can't be deleted — the rest of the app, especially Analytics, depends on it existing. Rename it or reorganize its columns instead.`
+      );
+      return;
+    }
+
     const { count } = await supabase
       .from('vehicles')
       .select('id', { count: 'exact', head: true })

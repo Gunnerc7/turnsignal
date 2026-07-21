@@ -238,6 +238,14 @@ export default function AnalyticsPage({
       return d <= rangeEnd;
     };
 
+    // Whichever stage is actually last in this dealership's own
+    // configured Main Board order — not a hardcoded key. A dealership
+    // renaming or restructuring their final stage shouldn't silently
+    // break Turn Rate; it should just keep working off whatever they've
+    // actually set up.
+    const mainBoardStages = boards.find((b) => b.key === 'main')?.stages ?? [];
+    const finalStageKey = mainBoardStages.length > 0 ? mainBoardStages[mainBoardStages.length - 1].key : 'price_for_lot';
+
     // Current count by stage — always "right now," a snapshot, not range-filtered.
     const currentCounts = new Map<string, number>();
     vehicles.forEach((v) => {
@@ -318,7 +326,7 @@ export default function AnalyticsPage({
     const turnTimes: number[] = [];
     const turnTimeDetails: { vehicle: VehicleRow; days: number }[] = [];
     vehicles.forEach((v) => {
-      if (v.stage !== 'price_for_lot' || !v.completed || !v.completed_at) return;
+      if (v.stage !== finalStageKey || !v.completed || !v.completed_at) return;
       if (!inRange(v.completed_at)) return;
       const serviceEntered = serviceEnteredByVehicle.get(v.id);
       if (!serviceEntered) return;
@@ -357,7 +365,7 @@ export default function AnalyticsPage({
     if (previousBounds) {
       const previousTurnTimes: number[] = [];
       vehicles.forEach((v) => {
-        if (v.stage !== 'price_for_lot' || !v.completed || !v.completed_at) return;
+        if (v.stage !== finalStageKey || !v.completed || !v.completed_at) return;
         const completedAt = new Date(v.completed_at);
         if (completedAt < previousBounds.start || completedAt > previousBounds.end) return;
         const serviceEntered = serviceEnteredByVehicle.get(v.id);
