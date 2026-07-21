@@ -715,6 +715,7 @@ export default function DealerBoard({
       {showLiveInventory ? (
         <LiveInventoryTable
           dealershipId={dealershipId}
+          boards={boards}
           refreshKey={liveInventoryRefreshKey}
           onImportClick={() => setImportModalOpen(true)}
         />

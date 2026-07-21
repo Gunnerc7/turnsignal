@@ -195,6 +195,7 @@ export default function VehicleCard({
             dms_state: 'Live',
             imported_at: now,
             removed_at: null,
+            source_vehicle_id: vehicle.id,
           },
           { onConflict: 'dealership_id,vin' }
         );

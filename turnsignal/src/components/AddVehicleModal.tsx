@@ -9,6 +9,7 @@ import { suggestIsNew } from '../lib/dates';
 import { BoardConfig } from '../lib/boards';
 import { Vehicle, VehicleNote } from '../lib/types';
 import VinPhotoCapture from './VinPhotoCapture';
+import { moveVehicleToStage } from '../lib/moveVehicle';
 
 export default function AddVehicleModal({
   dealershipId,
@@ -79,8 +80,10 @@ export default function AddVehicleModal({
   // from data already known, instead of typing it all by hand or
   // decoding a VIN fresh.
   const [liveSearch, setLiveSearch] = useState('');
-  const [liveSearchStatus, setLiveSearchStatus] = useState<'idle' | 'searching' | 'found' | 'notfound'>('idle');
+  const [liveSearchStatus, setLiveSearchStatus] = useState<'idle' | 'searching' | 'found' | 'notfound' | 'found-elsewhere'>('idle');
   const [matchedLiveInventoryId, setMatchedLiveInventoryId] = useState<string | null>(null);
+  const [existingMatch, setExistingMatch] = useState<{ id: string; board: string; stage: string; label: string } | null>(null);
+  const [movingExisting, setMovingExisting] = useState(false);
   // Only meaningful when creating a new vehicle — lets someone jot down a
   // note (or a few, each optionally tagging people) right in this same
   // form instead of having to close it and reopen Notes separately.
@@ -246,6 +249,27 @@ export default function AddVehicleModal({
     if (!q) return;
     setLiveSearchStatus('searching');
     setError(null);
+    setExistingMatch(null);
+
+    // Check the real board first — if this stock number is already an
+    // active card somewhere, that's a far more useful thing to surface
+    // than "not found," since it's very likely someone reaching for the
+    // wrong entry point rather than genuinely adding something new.
+    const { data: existingVehicle } = await supabase
+      .from('vehicles')
+      .select('id, board, stage, stock_number, year, make, model')
+      .eq('dealership_id', dealershipId)
+      .eq('completed', false)
+      .ilike('stock_number', q)
+      .maybeSingle();
+
+    if (existingVehicle) {
+      const label = `${existingVehicle.stock_number ? existingVehicle.stock_number + '-' : ''}${existingVehicle.year ?? ''} ${existingVehicle.make ?? ''} ${existingVehicle.model ?? ''}`.trim();
+      setExistingMatch({ id: existingVehicle.id, board: existingVehicle.board, stage: existingVehicle.stage, label });
+      setLiveSearchStatus('found-elsewhere');
+      return;
+    }
+
     const { data } = await supabase
       .from('live_inventory')
       .select('*')
@@ -273,6 +297,18 @@ export default function AddVehicleModal({
     }
     setMatchedLiveInventoryId(data.id);
     setLiveSearchStatus('found');
+  }
+
+  async function handleMoveExisting() {
+    if (!existingMatch) return;
+    const targetBoard = board ?? (destination ? destination.split('::')[0] : null);
+    const targetStage = stage ?? (destination ? destination.split('::')[1] : null);
+    if (!targetBoard || !targetStage) return;
+
+    setMovingExisting(true);
+    await moveVehicleToStage(existingMatch.id, targetBoard, targetStage, session?.user.id ?? null, userName);
+    setMovingExisting(false);
+    onCreated(existingMatch.id, targetBoard);
   }
 
   async function handlePhotoCapture(dataUrl: string) {
@@ -485,13 +521,14 @@ export default function AddVehicleModal({
         <div className="space-y-3 overflow-y-auto flex-1 px-5 py-4">
           {!isEditing && (
             <div>
-              <label className="block text-sm font-medium text-ink mb-1">Pull from Live Inventory (optional)</label>
+              <label className="block text-sm font-medium text-ink mb-1">Search by stock number (optional)</label>
               <div className="flex gap-2">
                 <input
                   value={liveSearch}
                   onChange={(e) => {
                     setLiveSearch(e.target.value);
                     setLiveSearchStatus('idle');
+                    setExistingMatch(null);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') searchLiveInventory();
@@ -512,6 +549,24 @@ export default function AddVehicleModal({
               )}
               {liveSearchStatus === 'notfound' && (
                 <p className="text-xs text-steel mt-1">No match for that stock number — fill in the details below instead.</p>
+              )}
+              {liveSearchStatus === 'found-elsewhere' && existingMatch && (
+                <div className="bg-signal-amber/10 border border-signal-amber/30 rounded-lg p-3 mt-2">
+                  <p className="text-sm text-ink">
+                    <span className="font-semibold">{existingMatch.label}</span> is already on your board.
+                  </p>
+                  {(board || destination) ? (
+                    <button
+                      onClick={handleMoveExisting}
+                      disabled={movingExisting}
+                      className="w-full bg-signal-blue text-white text-sm font-medium rounded-lg py-2 mt-2 disabled:opacity-60"
+                    >
+                      {movingExisting ? 'Moving…' : 'Move it here instead'}
+                    </button>
+                  ) : (
+                    <p className="text-xs text-steel mt-1">Choose where this goes below, then move it from there.</p>
+                  )}
+                </div>
               )}
             </div>
           )}

@@ -5,7 +5,7 @@ import { StageHistoryRow } from '../lib/types';
 import { BoardConfig, getBoard } from '../lib/boards';
 import ModalCloseButton from './ModalCloseButton';
 
-function durationLabel(enteredAt: string, exitedAt: string | null): string {
+export function durationLabel(enteredAt: string, exitedAt: string | null): string {
   const start = new Date(enteredAt).getTime();
   const end = exitedAt ? new Date(exitedAt).getTime() : Date.now();
   const totalMinutes = Math.max(0, Math.round((end - start) / 60000));
@@ -26,7 +26,7 @@ function durationLabel(enteredAt: string, exitedAt: string | null): string {
 // Same unit the rest of the app already uses for "days" everywhere else
 // (tabular, one decimal) — total is just the sum of every row shown
 // below it, so it can never quietly disagree with the detail list.
-function totalDaysLabel(rows: StageHistoryRow[]): string {
+export function totalDaysLabel(rows: StageHistoryRow[]): string {
   const totalMs = rows.reduce((sum, row) => {
     const start = new Date(row.entered_at).getTime();
     const end = row.exited_at ? new Date(row.exited_at).getTime() : Date.now();
@@ -36,7 +36,7 @@ function totalDaysLabel(rows: StageHistoryRow[]): string {
   return `${days.toFixed(1)} day${Math.abs(days - 1) < 0.05 ? '' : 's'}`;
 }
 
-function formatTimestamp(dateStr: string): string {
+export function formatTimestamp(dateStr: string): string {
   const date = new Date(dateStr);
   return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${date.toLocaleTimeString([], {
     hour: 'numeric',
