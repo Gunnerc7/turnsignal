@@ -118,6 +118,11 @@ export default function DealerBoard({
     { id: string; board: string; stock_number: string | null; vin: string | null; year: number | null; make: string | null; model: string | null; dealershipId: string; dealershipName: string }[]
   >([]);
   const [groupSearching, setGroupSearching] = useState(false);
+  const [liveInventorySearchResults, setLiveInventorySearchResults] = useState<
+    { id: string; stock_number: string | null; vin: string | null; year: number | null; make: string | null; model: string | null }[]
+  >([]);
+  const [liveInventorySearching, setLiveInventorySearching] = useState(false);
+  const [pendingLiveSearch, setPendingLiveSearch] = useState('');
 
   useEffect(() => {
     if (!groupId) {
@@ -166,6 +171,34 @@ export default function DealerBoard({
     }, 300);
     return () => clearTimeout(timeout);
   }, [searchQuery, siblingStores]);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setLiveInventorySearchResults([]);
+      return;
+    }
+    setLiveInventorySearching(true);
+    const timeout = setTimeout(async () => {
+      const { data } = await supabase
+        .from('live_inventory')
+        .select('id, stock_number, vin, year, make, model')
+        .eq('dealership_id', dealershipId)
+        .is('removed_at', null)
+        .or(`stock_number.ilike.%${q}%,vin.ilike.%${q}%,make.ilike.%${q}%,model.ilike.%${q}%`)
+        .limit(10);
+      setLiveInventorySearchResults(data ?? []);
+      setLiveInventorySearching(false);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [searchQuery, dealershipId]);
+
+  function handleLiveInventorySearchSelect() {
+    setPendingLiveSearch(searchQuery.trim());
+    setSearchQuery('');
+    setSearchOpen(false);
+    setShowLiveInventory(true);
+  }
 
   function handleGroupSearchSelect(result: (typeof groupSearchResults)[number]) {
     setSearchQuery('');
@@ -679,6 +712,31 @@ export default function DealerBoard({
                     ))
                   )
                 )}
+                {searchQuery.trim() && (
+                  <>
+                    <div className="px-3 py-1.5 bg-asphalt border-b border-gray-100">
+                      <p className="text-[11px] font-semibold text-steel uppercase tracking-wide">
+                        {liveInventorySearching ? 'Searching Live Inventory…' : 'Live Inventory'}
+                      </p>
+                    </div>
+                    {!liveInventorySearching && liveInventorySearchResults.length === 0 && (
+                      <p className="text-steel text-sm p-3">No matches in Live Inventory.</p>
+                    )}
+                    {liveInventorySearchResults.map((result) => (
+                      <button
+                        key={result.id}
+                        onClick={handleLiveInventorySearchSelect}
+                        className="w-full text-left px-3 py-2.5 border-b border-gray-50 last:border-0 hover:bg-asphalt"
+                      >
+                        <p className="text-sm font-medium text-ink truncate">
+                          {result.stock_number ? `${result.stock_number}-` : ''}
+                          {result.year ?? ''} {result.make} {result.model}
+                        </p>
+                        <p className="text-xs text-signal-blue font-medium">→ Live Inventory</p>
+                      </button>
+                    ))}
+                  </>
+                )}
                 {searchQuery.trim() && siblingStores.length > 0 && (
                   <>
                     <div className="px-3 py-1.5 bg-asphalt border-b border-gray-100">
@@ -717,6 +775,7 @@ export default function DealerBoard({
           dealershipId={dealershipId}
           boards={boards}
           refreshKey={liveInventoryRefreshKey}
+          initialSearch={pendingLiveSearch}
           onImportClick={() => setImportModalOpen(true)}
         />
       ) : (

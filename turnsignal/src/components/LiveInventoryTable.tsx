@@ -24,16 +24,18 @@ export default function LiveInventoryTable({
   dealershipId,
   boards,
   refreshKey,
+  initialSearch,
   onImportClick,
 }: {
   dealershipId: string;
   boards: BoardConfig[];
   refreshKey?: number;
+  initialSearch?: string;
   onImportClick: () => void;
 }) {
   const [rows, setRows] = useState<LiveInventoryRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch ?? '');
   const [showSold, setShowSold] = useState(false);
   const [selected, setSelected] = useState<LiveInventoryRow | null>(null);
 
