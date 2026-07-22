@@ -57,6 +57,20 @@ body {
 .modal-h-88 { max-height: 88vh; max-height: 88dvh; }
 .modal-h-90 { max-height: 90vh; max-height: 90dvh; }
 
+/* iOS Safari auto-zooms the whole page in when a form element is focused
+   if that element's font-size is under 16px — it's trying to make small
+   text legible, but it doesn't zoom back out on its own afterward,
+   which is exactly the "have to manually zoom back out" behavior this
+   fixes. Scoped to mobile-width screens only, so nothing on desktop
+   changes size. Covers every input/select/textarea in the app in one
+   place, rather than relying on manually finding and fixing each one
+   individually scattered across many files. */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* A visible, always-on scrollbar for the board's horizontal scroll area —
    without this, a desktop window that isn't maximized has no obvious way
    to tell there's more content off to the side, let alone drag to see it. */

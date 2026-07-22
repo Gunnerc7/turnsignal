@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   DndContext,
   defaultDropAnimationSideEffects,
@@ -15,6 +15,8 @@ import { useAuth } from '../lib/AuthContext';
 import { moveVehicleToStage, reorderWithinStage, undoMove, MoveUndoSnapshot } from '../lib/moveVehicle';
 import { BoardConfig, fetchBoards, getBoard } from '../lib/boards';
 import { Vehicle } from '../lib/types';
+import { computePriorityScores } from '../lib/priorityScoring';
+import { carryingCostSoFar } from '../lib/dates';
 import KanbanColumn from './KanbanColumn';
 import AddVehicleModal from './AddVehicleModal';
 import VehicleCard from './VehicleCard';
@@ -60,6 +62,7 @@ export default function DealerBoard({
 }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [photoCounts, setPhotoCounts] = useState<Map<string, number>>(new Map());
+  const [noteCounts, setNoteCounts] = useState<Map<string, number>>(new Map());
   const { session, userName } = useAuth();
   const [showLiveInventory, setShowLiveInventory] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -68,6 +71,8 @@ export default function DealerBoard({
   // in sessionStorage per-browser like other UI-only preferences (active
   // board tab, draft form state) rather than the database.
   const [compactMode, setCompactMode] = useState(() => sessionStorage.getItem('ts-compact-mode') === '1');
+  const [sortByPriority, setSortByPriority] = useState(() => sessionStorage.getItem('ts-sort-priority') === '1');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'needs_attention' | 'highest_cost' | 'assigned_to_me' | 'has_notes'>('all');
   const [boards, setBoards] = useState<BoardConfig[]>([]);
   // Restore the last-active board from sessionStorage — this is what
   // survives iOS Safari tab discards and comes back to the right column
@@ -314,8 +319,16 @@ export default function DealerBoard({
           counts.set(row.vehicle_id, (counts.get(row.vehicle_id) ?? 0) + 1);
         });
         setPhotoCounts(counts);
+
+        const { data: noteRows } = await supabase.from('vehicle_notes').select('vehicle_id').in('vehicle_id', ids);
+        const nCounts = new Map<string, number>();
+        (noteRows ?? []).forEach((row) => {
+          nCounts.set(row.vehicle_id, (nCounts.get(row.vehicle_id) ?? 0) + 1);
+        });
+        setNoteCounts(nCounts);
       } else {
         setPhotoCounts(new Map());
+        setNoteCounts(new Map());
       }
 
       // Due-date-reached check for loaners. There's no real scheduled/cron
@@ -608,6 +621,87 @@ export default function DealerBoard({
 
   const activeBoard = getBoard(boards, activeBoardKey);
 
+  // Reused by both the "Needs Attention" filter and the priority sort
+  // toggle — same underlying scoring Analytics already uses for Action
+  // Center, just applied here to order/filter the board itself.
+  const priorityResults = useMemo(
+    () => computePriorityScores(vehicles.filter((v) => !v.completed), yellowDays, redDays, newRatePerDay, usedRatePerDay),
+    [vehicles, yellowDays, redDays, newRatePerDay, usedRatePerDay]
+  );
+  const priorityScoreMap = useMemo(() => {
+    const map = new Map<string, number>();
+    priorityResults.forEach((r) => map.set(r.vehicle.id, r.score));
+    return map;
+  }, [priorityResults]);
+  const needsAttentionIds = useMemo(
+    () => new Set(priorityResults.filter((r) => r.score > 0).map((r) => r.vehicle.id)),
+    [priorityResults]
+  );
+  const highestCostIds = useMemo(() => {
+    const active = vehicles.filter((v) => !v.completed);
+    if (active.length === 0) return new Set<string>();
+    const costs = active.map((v) => ({ id: v.id, cost: carryingCostSoFar(v, newRatePerDay, usedRatePerDay) }));
+    const avg = costs.reduce((sum, c) => sum + c.cost, 0) / costs.length;
+    return new Set(costs.filter((c) => c.cost > avg && c.cost > 0).map((c) => c.id));
+  }, [vehicles, newRatePerDay, usedRatePerDay]);
+  const assignedToMeIds = useMemo(
+    () => new Set(vehicles.filter((v) => !v.completed && v.assigned_to_id === session?.user.id).map((v) => v.id)),
+    [vehicles, session]
+  );
+  const hasNotesIds = useMemo(
+    () => new Set(Array.from(noteCounts.entries()).filter(([, count]) => count > 0).map(([id]) => id)),
+    [noteCounts]
+  );
+  const activeVehicleCount = vehicles.filter((v) => !v.completed).length;
+  const filterCounts = {
+    all: activeVehicleCount,
+    needs_attention: needsAttentionIds.size,
+    highest_cost: highestCostIds.size,
+    assigned_to_me: assignedToMeIds.size,
+    has_notes: hasNotesIds.size,
+  };
+  function passesActiveFilter(vehicleId: string): boolean {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'needs_attention') return needsAttentionIds.has(vehicleId);
+    if (activeFilter === 'highest_cost') return highestCostIds.has(vehicleId);
+    if (activeFilter === 'assigned_to_me') return assignedToMeIds.has(vehicleId);
+    if (activeFilter === 'has_notes') return hasNotesIds.has(vehicleId);
+    return true;
+  }
+
+  // Column header health — live average of "time in current stage" for
+  // whatever's actually sitting there right now. Inbound/Trade-In and the
+  // whole Loaners board are deliberately left neutral, matching the same
+  // rule aging colors already follow everywhere else in the app.
+  const stageHealthMap = useMemo(() => {
+    const map = new Map<string, { avgDays: number | null; indicator: 'green' | 'yellow' | 'red' | 'neutral' }>();
+    const grouped = new Map<string, Vehicle[]>();
+    vehicles
+      .filter((v) => !v.completed)
+      .forEach((v) => {
+        const key = `${v.board}::${v.stage}`;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(v);
+      });
+    grouped.forEach((vs, key) => {
+      const [boardKey, stageKey] = key.split('::');
+      const isNeutral = boardKey === 'loaners' || stageKey === 'inbound_trade_in';
+      const days = vs.map((v) => (Date.now() - new Date(v.stage_entered_at).getTime()) / 86400000);
+      const avg = days.length > 0 ? days.reduce((a, b) => a + b, 0) / days.length : null;
+      const indicator: 'green' | 'yellow' | 'red' | 'neutral' = isNeutral
+        ? 'neutral'
+        : avg === null
+        ? 'neutral'
+        : avg >= redDays
+        ? 'red'
+        : avg >= yellowDays
+        ? 'yellow'
+        : 'green';
+      map.set(key, { avgDays: avg, indicator });
+    });
+    return map;
+  }, [vehicles, yellowDays, redDays]);
+
   if (loading || boards.length === 0) {
     return <p className="text-steel text-sm p-4">Loading…</p>;
   }
@@ -644,6 +738,20 @@ export default function DealerBoard({
           ⚙️ Settings
         </button>
         <div className="relative ml-auto flex items-center gap-2">
+          <button
+            onClick={() => {
+              const next = !sortByPriority;
+              setSortByPriority(next);
+              sessionStorage.setItem('ts-sort-priority', next ? '1' : '0');
+            }}
+            aria-label={sortByPriority ? 'Turn off priority sort' : 'Sort columns by priority'}
+            title={sortByPriority ? 'Priority sort on' : 'Priority sort off'}
+            className={`text-sm whitespace-nowrap px-2 py-1 rounded-md ${
+              sortByPriority ? 'bg-signal-blue text-white' : 'text-steel'
+            }`}
+          >
+            ⚡
+          </button>
           <button
             onClick={() => {
               const next = !compactMode;
@@ -781,6 +889,27 @@ export default function DealerBoard({
       ) : (
         activeBoard && (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+          <div className="flex items-center gap-1.5 overflow-x-auto px-4 py-2 border-b border-gray-200 bg-white">
+            {(
+              [
+                { key: 'all', label: 'All', count: filterCounts.all },
+                { key: 'needs_attention', label: '🚩 Needs Attention', count: filterCounts.needs_attention },
+                { key: 'highest_cost', label: '💰 Highest Cost', count: filterCounts.highest_cost },
+                { key: 'assigned_to_me', label: '👤 Assigned to Me', count: filterCounts.assigned_to_me },
+                { key: 'has_notes', label: '📝 Has Notes', count: filterCounts.has_notes },
+              ] as const
+            ).map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setActiveFilter(f.key)}
+                className={`flex-shrink-0 whitespace-nowrap text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
+                  activeFilter === f.key ? 'bg-signal-blue text-white' : 'bg-asphalt text-steel'
+                }`}
+              >
+                {f.label} ({f.count})
+              </button>
+            ))}
+          </div>
           <div
             ref={topScrollRef}
             onScroll={handleTopScroll}
@@ -813,12 +942,15 @@ export default function DealerBoard({
                   highlightedVehicleId={highlightedVehicleId}
                   onAnyCardModalOpenChange={handleAnyCardModalOpenChange}
                   photoCounts={photoCounts}
+                  noteCounts={noteCounts}
                   compactMode={compactMode}
                   onMoveWithUndo={showUndoToast}
+                  healthInfo={stageHealthMap.get(`${activeBoard.key}::${stage.key}`) ?? null}
                   vehicles={vehicles
-                    .filter((v) => v.board === activeBoard.key && v.stage === stage.key)
+                    .filter((v) => v.board === activeBoard.key && v.stage === stage.key && passesActiveFilter(v.id))
                     .sort((a, b) => {
                       if (a.completed !== b.completed) return a.completed ? 1 : -1;
+                      if (sortByPriority) return (priorityScoreMap.get(b.id) ?? 0) - (priorityScoreMap.get(a.id) ?? 0);
                       return (a.position ?? 0) - (b.position ?? 0);
                     })}
                   onAddClick={() => setAddModal({ board: activeBoard.key, stage: stage.key })}

@@ -20,10 +20,12 @@ export default function KanbanColumn({
   highlightedVehicleId,
   onAnyCardModalOpenChange,
   photoCounts,
+  noteCounts,
   compactMode,
   onMoveWithUndo,
   onAddClick,
   onMoved,
+  healthInfo,
 }: {
   label: string;
   stageKey: string;
@@ -38,10 +40,12 @@ export default function KanbanColumn({
   highlightedVehicleId?: string | null;
   onAnyCardModalOpenChange?: (open: boolean) => void;
   photoCounts: Map<string, number>;
+  noteCounts: Map<string, number>;
   compactMode?: boolean;
   onMoveWithUndo?: (snapshot: MoveUndoSnapshot, destinationLabel: string) => void;
   onAddClick: () => void;
   onMoved: () => void;
+  healthInfo?: { avgDays: number | null; indicator: 'green' | 'yellow' | 'red' | 'neutral' } | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stageKey });
   const [showCompleted, setShowCompleted] = useState(false);
@@ -67,13 +71,31 @@ export default function KanbanColumn({
       }`}
     >
       <div className="flex items-center justify-between mb-3 px-0.5">
-        <p className="font-display font-bold text-ink text-base">
-          {label} <span className="text-steel font-normal text-sm">({activeVehicles.length})</span>
-        </p>
+        <div className="min-w-0">
+          <p className="font-display font-bold text-ink text-base">
+            {label} <span className="text-steel font-normal text-sm">({activeVehicles.length})</span>
+          </p>
+          {healthInfo && healthInfo.avgDays !== null && (
+            <p className="text-[11px] text-steel tabular flex items-center gap-1">
+              Avg {healthInfo.avgDays.toFixed(1)}d
+              {healthInfo.indicator !== 'neutral' && (
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    healthInfo.indicator === 'red'
+                      ? 'bg-signal-red'
+                      : healthInfo.indicator === 'yellow'
+                      ? 'bg-signal-amber'
+                      : 'bg-signal-green'
+                  }`}
+                />
+              )}
+            </p>
+          )}
+        </div>
         <button
           onClick={onAddClick}
           aria-label={`Add vehicle to ${label}`}
-          className="w-9 h-9 rounded-full bg-signal-blue text-white text-xl leading-none flex items-center justify-center active:scale-90 transition shadow-sm"
+          className="w-9 h-9 rounded-full bg-signal-blue text-white text-xl leading-none flex items-center justify-center active:scale-90 transition shadow-sm flex-shrink-0"
         >
           +
         </button>
@@ -102,6 +124,7 @@ export default function KanbanColumn({
                     highlighted={v.id === highlightedVehicleId}
                     onAnyModalOpenChange={onAnyCardModalOpenChange}
                     photoCount={photoCounts.get(v.id) ?? 0}
+                    noteCount={noteCounts.get(v.id) ?? 0}
                     compactMode={compactMode}
                     onMoveWithUndo={onMoveWithUndo}
                     onMoved={onMoved}
@@ -135,6 +158,7 @@ export default function KanbanColumn({
                         highlighted={v.id === highlightedVehicleId}
                         onAnyModalOpenChange={onAnyCardModalOpenChange}
                         photoCount={photoCounts.get(v.id) ?? 0}
+                    noteCount={noteCounts.get(v.id) ?? 0}
                         compactMode={compactMode}
                         onMoveWithUndo={onMoveWithUndo}
                         onMoved={onMoved}

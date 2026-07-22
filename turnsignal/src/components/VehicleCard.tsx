@@ -69,6 +69,7 @@ export default function VehicleCard({
   highlighted,
   onAnyModalOpenChange,
   photoCount = 0,
+  noteCount = 0,
   compactMode,
   onMoveWithUndo,
   onMoved,
@@ -84,6 +85,7 @@ export default function VehicleCard({
   highlighted?: boolean;
   onAnyModalOpenChange?: (open: boolean) => void;
   photoCount?: number;
+  noteCount?: number;
   compactMode?: boolean;
   onMoveWithUndo?: (snapshot: MoveUndoSnapshot, destinationLabel: string) => void;
   onMoved: () => void;
@@ -316,6 +318,12 @@ export default function VehicleCard({
           <span className="text-sm text-ink truncate block">
             {vehicle.stock_number && <span className="font-semibold">{vehicle.stock_number}-</span>}
             {vehicle.year ?? ''} {vehicle.make} {vehicle.model}
+          </span>
+          <span className="flex items-center gap-2 text-[11px] text-steel mt-0.5">
+            {vehicle.assigned_to_name && <span className="truncate max-w-[80px]">{vehicle.assigned_to_name}</span>}
+            {noteCount > 0 && <span>📝{noteCount > 9 ? '9+' : noteCount}</span>}
+            {photoCount > 0 && <span>📷{photoCount > 9 ? '9+' : photoCount}</span>}
+            {carryingCost > 0 && <span className="tabular ml-auto">${carryingCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>}
           </span>
         </button>
         <div
